@@ -2,7 +2,7 @@
 
 ArduPilot DataFlash log parser written in Go.
 
-##!!!Work in Progress
+## !!!Work in Progress
 
 This project is currently in early development and was created for fun and learning purposes. The code is raw and not ready for use. Expect breaking changes, incomplete features, and rough edges.
 
