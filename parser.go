@@ -20,6 +20,7 @@ const (
 type Parser struct {
 	file    *os.File
 	schemas map[uint8]*Schema
+	filter  map[string]bool
 }
 
 // NewParser creates a new parser for the given DataFlash log file.
@@ -63,34 +64,50 @@ func (p *Parser) GetSchemas() map[uint8]*Schema {
 // ReadMessage reads and parses the next message from the log.
 // Returns io.EOF when there are no more messages.
 func (p *Parser) ReadMessage() (*Message, error) {
-	msgType, err := p.readMessageHeader()
-	if err != nil {
-		return nil, err
-	}
+	for {
+		msgType, err := p.readMessageHeader()
+		if err != nil {
+			return nil, err
+		}
 
-	schema, ok := p.schemas[msgType]
-	if !ok {
-		return nil, fmt.Errorf("unknown message type: %d", msgType)
-	}
+		schema, ok := p.schemas[msgType]
+		if !ok {
+			return nil, fmt.Errorf("unknown message type: %d", msgType)
+		}
 
-	// Read message body
-	bodySize := int(schema.Length) - HeaderSize
-	body := make([]byte, bodySize)
-	if _, err := io.ReadFull(p.file, body); err != nil {
-		return nil, err
-	}
+		// Read message body
+		bodySize := int(schema.Length) - HeaderSize
+		body := make([]byte, bodySize)
+		if _, err := io.ReadFull(p.file, body); err != nil {
+			return nil, err
+		}
 
-	// Decode message body
-	fields, err := DecodeMessageBody(body, schema)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode message: %w", err)
+		// Decode message body
+		fields, err := DecodeMessageBody(body, schema)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode message: %w", err)
+		}
+		if p.filter != nil && !p.filter[schema.Name] {
+			continue
+		}
+		return &Message{
+			Type:   msgType,
+			Name:   schema.Name,
+			Fields: fields,
+		}, nil
 	}
+}
 
-	return &Message{
-		Type:   msgType,
-		Name:   schema.Name,
-		Fields: fields,
-	}, nil
+// SetFilter creates filter rule to parse specific message names.
+func (p *Parser) SetFilter(names []string) {
+	p.filter = make(map[string]bool)
+	for _, name := range names {
+		p.filter[name] = true
+	}
+}
+
+func (p *Parser) ClearFilter() {
+	p.filter = nil
 }
 
 // buildSchemas performs the first pass to read all FMT messages.
