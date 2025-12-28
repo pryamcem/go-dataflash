@@ -21,18 +21,23 @@ func main() {
 	}
 	defer parser.Close()
 
-	for {
+	// Filter to only get GPS messages
+	parser.SetFilter([]string{"GPS"})
+
+	// Read first 5 GPS messages
+	count := 0
+	for count < 5 {
 		msg, err := parser.ReadMessage()
 		if err == io.EOF {
-			break // No more messages
+			break
 		}
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue
 		}
 
-		if msg.Name == "GPS" {
-			fmt.Printf("GPS: %v\n", msg.Fields)
-		}
+		fmt.Printf("GPS #%d: Lat=%v, Lng=%v, Alt=%v\n",
+			count+1, msg.Fields["Lat"], msg.Fields["Lng"], msg.Fields["Alt"])
+		count++
 	}
 }
