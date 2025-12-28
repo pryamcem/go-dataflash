@@ -18,9 +18,9 @@ const (
 
 // Parser reads and parses ArduPilot DataFlash binary logs.
 type Parser struct {
-	file    *os.File
-	schemas map[uint8]*Schema
-	filter  map[string]bool
+	file        *os.File
+	schemas     map[uint8]*Schema
+	filterTypes map[uint8]bool
 }
 
 // NewParser creates a new parser for the given DataFlash log file.
@@ -70,6 +70,13 @@ func (p *Parser) ReadMessage() (*Message, error) {
 			return nil, err
 		}
 
+		if p.filterTypes != nil && !p.filterTypes[msgType] {
+			schema := p.schemas[msgType]
+			bodySize := int(schema.Length) - HeaderSize
+			p.file.Seek(int64(bodySize), io.SeekCurrent)
+			continue
+		}
+
 		schema, ok := p.schemas[msgType]
 		if !ok {
 			return nil, fmt.Errorf("unknown message type: %d", msgType)
@@ -87,9 +94,7 @@ func (p *Parser) ReadMessage() (*Message, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode message: %w", err)
 		}
-		if p.filter != nil && !p.filter[schema.Name] {
-			continue
-		}
+
 		return &Message{
 			Type:   msgType,
 			Name:   schema.Name,
@@ -100,14 +105,20 @@ func (p *Parser) ReadMessage() (*Message, error) {
 
 // SetFilter creates filter rule to parse specific message names.
 func (p *Parser) SetFilter(names []string) {
-	p.filter = make(map[string]bool)
+	p.filterTypes = make(map[uint8]bool)
+
 	for _, name := range names {
-		p.filter[name] = true
+		for typ, schema := range p.schemas {
+			if schema.Name == name {
+				p.filterTypes[typ] = true
+				break
+			}
+		}
 	}
 }
 
 func (p *Parser) ClearFilter() {
-	p.filter = nil
+	p.filterTypes = nil
 }
 
 // buildSchemas performs the first pass to read all FMT messages.
