@@ -104,6 +104,7 @@ func (p *Parser) ReadMessage() (*Message, error) {
 }
 
 // SetFilter creates filter rule to parse specific message names.
+// Automatically rewinds the file to the beginning so all messages are available.
 func (p *Parser) SetFilter(names []string) {
 	p.filterTypes = make(map[uint8]bool)
 
@@ -115,10 +116,20 @@ func (p *Parser) SetFilter(names []string) {
 			}
 		}
 	}
+
+	// Rewind to start so filter applies from beginning
+	p.file.Seek(0, io.SeekStart)
 }
 
 func (p *Parser) ClearFilter() {
 	p.filterTypes = nil
+}
+
+// Rewind resets the file position to the beginning.
+// Useful for re-reading messages or starting a new iteration.
+func (p *Parser) Rewind() error {
+	_, err := p.file.Seek(0, io.SeekStart)
+	return err
 }
 
 // buildSchemas performs the first pass to read all FMT messages.
