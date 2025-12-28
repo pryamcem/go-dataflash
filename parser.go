@@ -112,13 +112,46 @@ func (p *Parser) buildSchemas() error {
 			}
 			p.schemas[schema.Type] = schema
 		} else {
-			// Skip non-FMT messages in first pass
-			// Assume all non-FMT messages are 89 bytes during schema building
-			p.file.Seek(FMTLength-HeaderSize, io.SeekCurrent)
+			// Unknown message type - sync to next header
+			if err := p.syncToNextHeader(); err != nil {
+				if err == io.EOF || err == io.ErrUnexpectedEOF {
+					break
+				}
+				return err
+			}
 		}
 	}
 
 	return nil
+}
+
+// syncToNextHeader scans forward byte-by-byte to find the next valid message header.
+// This is used when we encounter unknown message types during schema building.
+func (p *Parser) syncToNextHeader() error {
+	for {
+		byte1 := make([]byte, 1)
+		_, err := p.file.Read(byte1)
+		if err != nil {
+			return err
+		}
+
+		if byte1[0] == HEAD1 {
+			// Found potential first magic byte, check second
+			byte2 := make([]byte, 1)
+			_, err := p.file.Read(byte2)
+			if err != nil {
+				return err
+			}
+
+			if byte2[0] == HEAD2 {
+				// Found valid header! Seek back 2 bytes so next read gets the full header
+				_, err := p.file.Seek(-2, io.SeekCurrent)
+				return err
+			}
+			// Second byte didn't match, seek back 1 and continue
+			p.file.Seek(-1, io.SeekCurrent)
+		}
+	}
 }
 
 // readMessageHeader reads and validates a 3-byte message header.
