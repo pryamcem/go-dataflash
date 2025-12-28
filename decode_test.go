@@ -1,4 +1,4 @@
-package main
+package dataflash
 
 import (
 	"reflect"
@@ -6,7 +6,7 @@ import (
 )
 
 func TestDecodeMessageBody_SingleUint8(t *testing.T) {
-	schema := &FMTMessage{
+	schema := &Schema{
 		Format:  "B",
 		Columns: "Value",
 		Length:  4, // 3-byte header + 1 byte data
@@ -14,7 +14,7 @@ func TestDecodeMessageBody_SingleUint8(t *testing.T) {
 
 	body := []byte{123}
 
-	result, err := decodeMessageBody(body, schema)
+	result, err := DecodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestDecodeMessageBody_SingleUint8(t *testing.T) {
 }
 
 func TestDecodeMessageBody_MultipleUnsignedIntegers(t *testing.T) {
-	schema := &FMTMessage{
+	schema := &Schema{
 		Format:  "BHI",
 		Columns: "Field1,Field2,Field3",
 		Length:  10, // 3 + 1 + 2 + 4
@@ -44,7 +44,7 @@ func TestDecodeMessageBody_MultipleUnsignedIntegers(t *testing.T) {
 		0x40, 0xE2, 0x01, 0x00, // I
 	}
 
-	result, err := decodeMessageBody(body, schema)
+	result, err := DecodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestDecodeMessageBody_MultipleUnsignedIntegers(t *testing.T) {
 }
 
 func TestDecodeMessageBody_SignedIntegers(t *testing.T) {
-	schema := &FMTMessage{
+	schema := &Schema{
 		Format:  "bhi",
 		Columns: "Int8,Int16,Int32",
 		Length:  10, // 3 + 1 + 2 + 4
@@ -76,7 +76,7 @@ func TestDecodeMessageBody_SignedIntegers(t *testing.T) {
 		0xC0, 0x1D, 0xFE, 0xFF, // i: -123456
 	}
 
-	result, err := decodeMessageBody(body, schema)
+	result, err := DecodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestDecodeMessageBody_SignedIntegers(t *testing.T) {
 }
 
 func TestDecodeMessageBody_ScaledValues(t *testing.T) {
-	schema := &FMTMessage{
+	schema := &Schema{
 		Format:  "cL",
 		Columns: "Altitude,Latitude",
 		Length:  9, // 3 + 2 + 4
@@ -106,7 +106,7 @@ func TestDecodeMessageBody_ScaledValues(t *testing.T) {
 		0xC0, 0x78, 0x83, 0x16, // L: latitude
 	}
 
-	result, err := decodeMessageBody(body, schema)
+	result, err := DecodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestDecodeMessageBody_ScaledValues(t *testing.T) {
 }
 
 func TestDecodeMessageBody_String(t *testing.T) {
-	schema := &FMTMessage{
+	schema := &Schema{
 		Format:  "n",
 		Columns: "Name",
 		Length:  7, // 3 + 4
@@ -140,7 +140,7 @@ func TestDecodeMessageBody_String(t *testing.T) {
 	// "GPS" with null terminator
 	body := []byte{'G', 'P', 'S', 0x00}
 
-	result, err := decodeMessageBody(body, schema)
+	result, err := DecodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestDecodeMessageBody_String(t *testing.T) {
 
 func TestDecodeMessageBody_NullTerminator(t *testing.T) {
 	// Format string with null terminator should stop parsing
-	schema := &FMTMessage{
+	schema := &Schema{
 		Format:  "BH\x00XX", // Null after H
 		Columns: "Field1,Field2,Field3,Field4",
 		Length:  6, // 3 + 1 + 2
@@ -168,7 +168,7 @@ func TestDecodeMessageBody_NullTerminator(t *testing.T) {
 		// No more data after null terminator
 	}
 
-	result, err := decodeMessageBody(body, schema)
+	result, err := DecodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestDecodeMessageBody_NullTerminator(t *testing.T) {
 
 func TestDecodeMessageBody_MoreFormatThanColumns(t *testing.T) {
 	// More format characters than column names
-	schema := &FMTMessage{
+	schema := &Schema{
 		Format:  "BHI",
 		Columns: "Field1,Field2", // Only 2 columns but 3 format chars
 		Length:  10,
@@ -203,7 +203,7 @@ func TestDecodeMessageBody_MoreFormatThanColumns(t *testing.T) {
 		0x40, 0xE2, 0x01, 0x00,
 	}
 
-	result, err := decodeMessageBody(body, schema)
+	result, err := DecodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

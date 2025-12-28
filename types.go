@@ -1,0 +1,18 @@
+package dataflash
+
+// Schema represents a message format definition (FMT message).
+// It describes how to decode a specific message type.
+type Schema struct {
+	Type    uint8  // Message type ID
+	Length  uint8  // Total message length including 3-byte header
+	Name    string // Message name (e.g., "GPS", "IMU")
+	Format  string // Format string (e.g., "QBBIHBcLLeffffB")
+	Columns string // Comma-separated column names
+}
+
+// Message represents a parsed DataFlash message with its decoded field values.
+type Message struct {
+	Type   uint8                  // Message type ID
+	Name   string                 // Message name
+	Fields map[string]interface{} // Decoded field values
+}
