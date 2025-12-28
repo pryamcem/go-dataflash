@@ -15,15 +15,26 @@ go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It 
 - [Done] Two-pass parsing architecture (very slow and ineffective)
 - [Done] FMT (format) message parsing
 - [Done] Message schema discovery
-- [In progress] Data message parsing
+- [Done] Data message parsing
 - [TODO] Message filtering
 
 ## Usage
 
-Currently, the parser can read DataFlash logs and identify message types. Full message parsing is under development.
+See [examples/parse_log](https://github.com/pryamcem/go-dataflash/tree/master/examples) for a complete working example.
 
-```bash
-go run main.go
+```go
+import "github.com/pryamcem/go-dataflash"
+
+parser, _ := dataflash.NewParser("log.bin")
+defer parser.Close()
+
+for {
+    msg, err := parser.ReadMessage()
+    if err == io.EOF {
+        break
+    }
+    // Process msg.Name and msg.Fields
+}
 ```
 
 ## DataFlash Format Overview
