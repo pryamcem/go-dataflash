@@ -22,7 +22,9 @@ func TestParserTiming(t *testing.T) {
 
 	// Step 2: Set filter
 	t3 := time.Now()
-	parser.SetFilter([]string{"GPS"})
+	if err := parser.SetFilter([]string{"GPS"}); err != nil {
+		t.Fatalf("failed to set filter: %v", err)
+	}
 	t4 := time.Now()
 	fmt.Printf("Set filter: %v\n", t4.Sub(t3))
 

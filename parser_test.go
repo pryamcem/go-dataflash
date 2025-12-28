@@ -14,7 +14,9 @@ func TestParserFilter(t *testing.T) {
 	defer parser.Close()
 
 	// Set filter to only GPS
-	parser.SetFilter([]string{"GPS"})
+	if err := parser.SetFilter([]string{"GPS"}); err != nil {
+		t.Fatalf("failed to set filter: %v", err)
+	}
 
 	// Read 10 messages
 	for range 10 {
@@ -30,5 +32,35 @@ func TestParserFilter(t *testing.T) {
 		if msg.Name != "GPS" {
 			t.Errorf("expected GPS, got %s", msg.Name)
 		}
+	}
+}
+
+func TestSetFilterInvalid(t *testing.T) {
+	// Create parser
+	parser, err := NewParser("log_29_2025-12-13-16-08-22.bin")
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+	defer parser.Close()
+
+	// Try to set filter with invalid names
+	err = parser.SetFilter([]string{"INVALID", "NOTEXIST"})
+	if err == nil {
+		t.Fatal("expected error for invalid filter names, got nil")
+	}
+
+	// Mix of valid and invalid should work (at least one valid)
+	err = parser.SetFilter([]string{"GPS", "INVALID"})
+	if err != nil {
+		t.Fatalf("expected no error for mixed filter (at least one valid), got: %v", err)
+	}
+
+	// Verify we can still read GPS messages
+	msg, err := parser.ReadMessage()
+	if err != nil {
+		t.Fatalf("error reading message after mixed filter: %v", err)
+	}
+	if msg.Name != "GPS" {
+		t.Errorf("expected GPS, got %s", msg.Name)
 	}
 }

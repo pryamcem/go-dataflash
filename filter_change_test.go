@@ -13,7 +13,9 @@ func TestFilterChangeRewinds(t *testing.T) {
 	defer parser.Close()
 
 	// Read 5 GPS messages
-	parser.SetFilter([]string{"GPS"})
+	if err := parser.SetFilter([]string{"GPS"}); err != nil {
+		t.Fatalf("failed to set filter: %v", err)
+	}
 	gpsCount := 0
 	for gpsCount < 5 {
 		_, err := parser.ReadMessage()
@@ -31,7 +33,9 @@ func TestFilterChangeRewinds(t *testing.T) {
 	}
 
 	// Change filter to IMU - should rewind automatically
-	parser.SetFilter([]string{"IMU"})
+	if err := parser.SetFilter([]string{"IMU"}); err != nil {
+		t.Fatalf("failed to set filter: %v", err)
+	}
 	
 	// Should be able to read IMU messages from the beginning
 	imuCount := 0

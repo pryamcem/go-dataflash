@@ -66,20 +66,37 @@ func (p *Parser) GetSchemas() map[uint8]*Schema {
 func (p *Parser) ReadMessage() (*Message, error) {
 	for {
 		msgType, err := p.readMessageHeader()
-		if err != nil {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			return nil, err
 		}
-
-		if p.filterTypes != nil && !p.filterTypes[msgType] {
-			schema := p.schemas[msgType]
-			bodySize := int(schema.Length) - HeaderSize
-			p.file.Seek(int64(bodySize), io.SeekCurrent)
+		if err != nil {
+			// Invalid header - try to sync to next valid header
+			if syncErr := p.syncToNextHeader(); syncErr != nil {
+				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
+					return nil, syncErr
+				}
+				// Continue trying to read next message
+			}
 			continue
 		}
 
+		// Check if we have schema for this message type
 		schema, ok := p.schemas[msgType]
 		if !ok {
-			return nil, fmt.Errorf("unknown message type: %d", msgType)
+			// Unknown message type - sync to next header
+			if syncErr := p.syncToNextHeader(); syncErr != nil {
+				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
+					return nil, syncErr
+				}
+			}
+			continue
+		}
+
+		// Check filter before reading body
+		if p.filterTypes != nil && !p.filterTypes[msgType] {
+			bodySize := int(schema.Length) - HeaderSize
+			p.file.Seek(int64(bodySize), io.SeekCurrent)
+			continue
 		}
 
 		// Read message body
@@ -105,7 +122,8 @@ func (p *Parser) ReadMessage() (*Message, error) {
 
 // SetFilter creates filter rule to parse specific message names.
 // Automatically rewinds the file to the beginning so all messages are available.
-func (p *Parser) SetFilter(names []string) {
+// Returns an error if none of the provided names match any message types in the log.
+func (p *Parser) SetFilter(names []string) error {
 	p.filterTypes = make(map[uint8]bool)
 
 	for _, name := range names {
@@ -117,8 +135,13 @@ func (p *Parser) SetFilter(names []string) {
 		}
 	}
 
+	if len(p.filterTypes) == 0 {
+		return fmt.Errorf("no valid message types found in filter: %v", names)
+	}
+
 	// Rewind to start so filter applies from beginning
-	p.file.Seek(0, io.SeekStart)
+	_, err := p.file.Seek(0, io.SeekStart)
+	return err
 }
 
 func (p *Parser) ClearFilter() {
