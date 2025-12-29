@@ -12,7 +12,7 @@ const (
 
 func TestParserFilter(t *testing.T) {
 	// Create parser
-	parser, err := NewParser(testFile)
+	parser, err := NewParser("testdata/testlog.bin")
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
@@ -47,16 +47,25 @@ func TestSetFilterInvalid(t *testing.T) {
 	}
 	defer parser.Close()
 
-	// Try to set filter with invalid names
+	// Try to set filter with all invalid names
 	err = parser.SetFilter([]string{"INVALID", "NOTEXIST"})
 	if err == nil {
 		t.Fatal("expected error for invalid filter names, got nil")
 	}
 
-	// Mix of valid and invalid should work (at least one valid)
+	// Try to set filter with mix of valid and invalid
 	err = parser.SetFilter([]string{"GPS", "INVALID"})
+	if err == nil {
+		t.Fatal("expected error for invalid filter name, got nil")
+	}
+	if err.Error() != "invalid message types in filter: [INVALID]" {
+		t.Errorf("unexpected error message: %v", err)
+	}
+
+	// Set valid filter
+	err = parser.SetFilter([]string{"GPS"})
 	if err != nil {
-		t.Fatalf("expected no error for mixed filter (at least one valid), got: %v", err)
+		t.Fatalf("unexpected error for valid filter: %v", err)
 	}
 
 	// Verify we can still read GPS messages

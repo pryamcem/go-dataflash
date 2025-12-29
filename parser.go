@@ -142,18 +142,28 @@ func (p *Parser) ReadMessage() (*Message, error) {
 // Returns an error if none of the provided names match any message types in the log.
 func (p *Parser) SetFilter(names []string) error {
 	p.filterTypes = make(map[uint8]bool)
+	var invalidNames []string
 
 	for _, name := range names {
+		found := false
 		for typ, schema := range p.schemas {
 			if schema.Name == name {
 				p.filterTypes[typ] = true
+				found = true
 				break
 			}
+		}
+		if !found {
+			invalidNames = append(invalidNames, name)
 		}
 	}
 
 	if len(p.filterTypes) == 0 {
 		return fmt.Errorf("no valid message types found in filter: %v", names)
+	}
+
+	if len(invalidNames) > 0 {
+		return fmt.Errorf("invalid message types in filter: %v", invalidNames)
 	}
 
 	// Rewind to start so filter applies from beginning
