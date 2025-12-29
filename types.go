@@ -15,4 +15,6 @@ type Message struct {
 	Type   uint8                  // Message type ID
 	Name   string                 // Message name
 	Fields map[string]interface{} // Decoded field values
+	LineNo int64                  // Message sequence number in the log
+	TimeUS int64                  // Microseconds since boot (0 if not available)
 }

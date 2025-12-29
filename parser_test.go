@@ -36,7 +36,6 @@ func TestParserFilter(t *testing.T) {
 }
 
 func TestSetFilterInvalid(t *testing.T) {
-	// Create parser
 	parser, err := NewParser("log_29_2025-12-13-16-08-22.bin")
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
@@ -62,5 +61,37 @@ func TestSetFilterInvalid(t *testing.T) {
 	}
 	if msg.Name != "GPS" {
 		t.Errorf("expected GPS, got %s", msg.Name)
+	}
+}
+
+func TestFilterChangeRewinds(t *testing.T) {
+	parser, err := NewParser("log_29_2025-12-13-16-08-22.bin")
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+	defer parser.Close()
+
+	// Read 5 GPS messages
+	if err := parser.SetFilter([]string{"GPS"}); err != nil {
+		t.Fatalf("failed to set filter: %v", err)
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := parser.ReadMessage(); err != nil {
+			t.Fatalf("error reading GPS: %v", err)
+		}
+	}
+
+	// Change filter to IMU - should rewind automatically
+	if err := parser.SetFilter([]string{"IMU"}); err != nil {
+		t.Fatalf("failed to set filter: %v", err)
+	}
+
+	// Should be able to read IMU messages from the beginning
+	msg, err := parser.ReadMessage()
+	if err != nil {
+		t.Fatalf("error reading IMU: %v", err)
+	}
+	if msg.Name != "IMU" {
+		t.Errorf("expected IMU, got %s", msg.Name)
 	}
 }

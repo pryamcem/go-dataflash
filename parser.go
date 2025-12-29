@@ -21,6 +21,7 @@ type Parser struct {
 	file        *os.File
 	schemas     map[uint8]*Schema
 	filterTypes map[uint8]bool
+	lineNo      int64 // Current message sequence number
 }
 
 // NewParser creates a new parser for the given DataFlash log file.
@@ -92,6 +93,9 @@ func (p *Parser) ReadMessage() (*Message, error) {
 			continue
 		}
 
+		// Increment line number for every message
+		p.lineNo++
+
 		// Check filter before reading body
 		if p.filterTypes != nil && !p.filterTypes[msgType] {
 			bodySize := int(schema.Length) - HeaderSize
@@ -112,10 +116,23 @@ func (p *Parser) ReadMessage() (*Message, error) {
 			return nil, fmt.Errorf("failed to decode message: %w", err)
 		}
 
+		// Extract TimeUS if available
+		timeUS := int64(0)
+		if val, ok := fields["TimeUS"]; ok {
+			switch v := val.(type) {
+			case int64:
+				timeUS = v
+			case uint64:
+				timeUS = int64(v)
+			}
+		}
+
 		return &Message{
 			Type:   msgType,
 			Name:   schema.Name,
 			Fields: fields,
+			LineNo: p.lineNo,
+			TimeUS: timeUS,
 		}, nil
 	}
 }
@@ -140,6 +157,7 @@ func (p *Parser) SetFilter(names []string) error {
 	}
 
 	// Rewind to start so filter applies from beginning
+	p.lineNo = 0
 	_, err := p.file.Seek(0, io.SeekStart)
 	return err
 }
@@ -151,8 +169,58 @@ func (p *Parser) ClearFilter() {
 // Rewind resets the file position to the beginning.
 // Useful for re-reading messages or starting a new iteration.
 func (p *Parser) Rewind() error {
+	p.lineNo = 0
 	_, err := p.file.Seek(0, io.SeekStart)
 	return err
+}
+
+// SliceType specifies how to slice the log.
+type SliceType string
+
+const (
+	SliceByLineNo SliceType = "LineNo"
+	SliceByTimeUS SliceType = "TimeUS"
+)
+
+// GetSlice returns messages within the specified range.
+// start and end values are interpreted based on sliceType (LineNo or TimeUS).
+// The returned messages are those where start <= value < end.
+func (p *Parser) GetSlice(start, end int64, sliceType SliceType) ([]*Message, error) {
+	if err := p.Rewind(); err != nil {
+		return nil, err
+	}
+
+	var messages []*Message
+	for {
+		msg, err := p.ReadMessage()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		var value int64
+		switch sliceType {
+		case SliceByLineNo:
+			value = msg.LineNo
+		case SliceByTimeUS:
+			value = msg.TimeUS
+		default:
+			return nil, fmt.Errorf("invalid slice type: %s", sliceType)
+		}
+
+		if value >= start && value < end {
+			messages = append(messages, msg)
+		}
+
+		// Early exit if we've passed the end
+		if value >= end {
+			break
+		}
+	}
+
+	return messages, nil
 }
 
 // buildSchemas performs the first pass to read all FMT messages.
