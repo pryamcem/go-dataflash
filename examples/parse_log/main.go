@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"github.com/pryamcem/go-dataflash"
@@ -14,6 +15,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	log.Println("Creating parser")
 	parser, err := dataflash.NewParser(os.Args[1])
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
@@ -21,18 +23,33 @@ func main() {
 	}
 	defer parser.Close()
 
+	// Filter to only get GPS messages
+	log.Println("Set filters")
+	if err := parser.SetFilter([]string{"GPS", "IMU", "TECS"}); err != nil {
+		log.Fatalf("Error setting filter: %v", err)
+	}
+
+	// Read messages
+	count := 0
 	for {
 		msg, err := parser.ReadMessage()
 		if err == io.EOF {
-			break // No more messages
+			break
 		}
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
+			log.Fatalf("Error reading message: %v", err)
 		}
 
-		if msg.Name == "GPS" {
-			fmt.Printf("GPS: %v\n", msg.Fields)
+		fmt.Printf("%s #%d: ", msg.Name, count+1)
+		// Print first few fields
+		for k, v := range msg.Fields {
+			fmt.Printf("%s=%v ", k, v)
+		}
+		fmt.Println()
+		count++
+		
+		if count >= 10 {
+			break
 		}
 	}
 }
