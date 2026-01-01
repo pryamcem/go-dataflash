@@ -4,35 +4,35 @@
 
 ### Message Statistics
 - [ ] Add `Stats` struct with message counts, time ranges, duration
+- [ ] Add tests for stats calculation
 - [ ] Implement `GetStats() Stats` method
 - [ ] Track stats during parsing (minimal overhead)
-- [ ] Add tests for stats calculation
 
-### Iterator Pattern  
+### Iterator Pattern (Optional)
+- [ ] Add tests for iterator pattern
 - [ ] Implement `Messages() <-chan *Message` for range iteration
 - [ ] Handle errors via separate error channel or in Message
 - [ ] Add context support for cancellation
 - [ ] Update examples to show iterator usage
-- [ ] Add tests for iterator pattern
 
-### Field Access Helpers
+### Field Access Helpers (Optional)
+- [ ] Add tests for all getter methods
 - [ ] Add `Message.GetInt64(field string) (int64, error)` 
 - [ ] Add `Message.GetFloat64(field string) (float64, error)`
 - [ ] Add `Message.GetString(field string) (string, error)`
 - [ ] Add `Message.GetBool(field string) (bool, error)`
 - [ ] Add convenience methods for common fields (TimeUS, Lat, Lng, Alt)
-- [ ] Add tests for all getter methods
 
 ## v2.x - Metadata Extraction (Medium effort)
 
 ### MSG Message Parsing
 - [ ] Add `Metadata` struct (Platform, Version, Commit, Hardware, etc.)
+- [ ] Add tests for metadata extraction
 - [ ] Extract platform from first MSG (ArduPlane, ArduCopter, etc.)
 - [ ] Extract version from MSG (e.g., V4.6.3)
 - [ ] Extract git commit hash from MSG (e.g., 3fc7011a)
 - [ ] Extract hardware info from MSG messages
 - [ ] Add `GetMetadata() Metadata` method
-- [ ] Add tests for metadata extraction
 
 ### Message Type List
 - [ ] Build list of available message types during schema building
@@ -64,11 +64,3 @@
 - [ ] Streaming API for real-time log processing
 - [ ] Unit/multiplier support (FMTU messages)
 - [ ] Schema validation and version checking
-
-## Testing & Documentation
-
-- [ ] Add benchmarks for each performance improvement
-- [ ] Update README with new features
-- [ ] Add usage examples for new APIs
-- [ ] Document breaking changes in CHANGELOG
-- [ ] Test with various log file sizes (small, medium, large)
