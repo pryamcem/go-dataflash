@@ -30,8 +30,8 @@ var formatSizes = map[rune]int{
 
 // DecodeMessageBody decodes a message body according to the provided schema.
 // Returns a map of field names to their decoded values.
-func DecodeMessageBody(body []byte, schema *Schema) (map[string]interface{}, error) {
-	data := make(map[string]interface{})
+func DecodeMessageBody(body []byte, schema *Schema) (map[string]any, error) {
+	data := make(map[string]any)
 	columns := strings.Split(schema.Columns, ",")
 
 	offset := 0
@@ -50,7 +50,7 @@ func DecodeMessageBody(body []byte, schema *Schema) (map[string]interface{}, err
 		columnName := columns[i]
 
 		// Decode based on format type
-		var value interface{}
+		var value any
 		switch dataType {
 		// Unsigned integers
 		case 'B': // uint8

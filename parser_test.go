@@ -19,14 +19,14 @@ func TestParserFilter(t *testing.T) {
 	defer parser.Close()
 
 	// Set filter to only GPS
-	if err := parser.SetFilter([]string{"GPS"}); err != nil {
+	if err := parser.SetFilter("GPS"); err != nil {
 		t.Fatalf("failed to set filter: %v", err)
 	}
 
 	// Read 10 messages
 	for range 10 {
 		msg, err := parser.ReadMessage()
-		if err == io.EOF {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
 		if err != nil {
@@ -48,13 +48,13 @@ func TestSetFilterInvalid(t *testing.T) {
 	defer parser.Close()
 
 	// Try to set filter with all invalid names
-	err = parser.SetFilter([]string{"INVALID", "NOTEXIST"})
+	err = parser.SetFilter("INVALID", "NOTEXIST")
 	if err == nil {
 		t.Fatal("expected error for invalid filter names, got nil")
 	}
 
 	// Try to set filter with mix of valid and invalid
-	err = parser.SetFilter([]string{"GPS", "INVALID"})
+	err = parser.SetFilter("GPS", "INVALID")
 	if err == nil {
 		t.Fatal("expected error for invalid filter name, got nil")
 	}
@@ -63,7 +63,7 @@ func TestSetFilterInvalid(t *testing.T) {
 	}
 
 	// Set valid filter
-	err = parser.SetFilter([]string{"GPS"})
+	err = parser.SetFilter("GPS")
 	if err != nil {
 		t.Fatalf("unexpected error for valid filter: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestFilterChangeRewinds(t *testing.T) {
 	defer parser.Close()
 
 	// Read 5 GPS messages
-	if err := parser.SetFilter([]string{"GPS"}); err != nil {
+	if err := parser.SetFilter("GPS"); err != nil {
 		t.Fatalf("failed to set filter: %v", err)
 	}
 	for i := 0; i < 5; i++ {
@@ -96,7 +96,7 @@ func TestFilterChangeRewinds(t *testing.T) {
 	}
 
 	// Change filter to IMU - should rewind automatically
-	if err := parser.SetFilter([]string{"IMU"}); err != nil {
+	if err := parser.SetFilter("IMU"); err != nil {
 		t.Fatalf("failed to set filter: %v", err)
 	}
 
@@ -118,7 +118,7 @@ func TestMessageTracking(t *testing.T) {
 	defer parser.Close()
 
 	// Filter for IMU which should have TimeUS
-	if err := parser.SetFilter([]string{"IMU"}); err != nil {
+	if err := parser.SetFilter("IMU"); err != nil {
 		t.Fatalf("failed to set filter: %v", err)
 	}
 
@@ -175,7 +175,7 @@ func TestGetSlice(t *testing.T) {
 	}
 
 	// Test slice by TimeUS - get first IMU message to find valid time range
-	if err := parser.SetFilter([]string{"IMU"}); err != nil {
+	if err := parser.SetFilter("IMU"); err != nil {
 		t.Fatalf("failed to set filter: %v", err)
 	}
 	firstMsg, err := parser.ReadMessage()

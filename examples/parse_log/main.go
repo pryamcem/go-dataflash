@@ -25,7 +25,7 @@ func main() {
 
 	// Filter to only get GPS messages
 	log.Println("Set filters")
-	if err := parser.SetFilter([]string{"GPS", "IMU", "TECS"}); err != nil {
+	if err := parser.SetFilter("GPS", "IMU", "TECS"); err != nil {
 		log.Fatalf("Error setting filter: %v", err)
 	}
 
@@ -33,7 +33,7 @@ func main() {
 	count := 0
 	for {
 		msg, err := parser.ReadMessage()
-		if err == io.EOF {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
 		if err != nil {
@@ -47,7 +47,7 @@ func main() {
 		}
 		fmt.Println()
 		count++
-		
+
 		if count >= 10 {
 			break
 		}

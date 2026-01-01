@@ -12,11 +12,14 @@ go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It 
 
 ## Current Status
 
-- [Done] Two-pass parsing architecture (very slow and ineffective)
-- [Done] FMT (format) message parsing
-- [Done] Message schema discovery
-- [Done] Data message parsing
-- [TODO] Message filtering
+- [x] Two-pass parsing architecture (very slow and ineffective)
+- [x] FMT (format) message parsing
+- [x] Message schema discovery
+- [x] Data message parsing
+- [x] Message filtering
+- [  ] Message statistics
+- [  ] Metadata extraction
+- [  ] Performance improvements
 
 ## Usage
 

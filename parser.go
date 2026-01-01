@@ -140,7 +140,7 @@ func (p *Parser) ReadMessage() (*Message, error) {
 // SetFilter creates filter rule to parse specific message names.
 // Automatically rewinds the file to the beginning so all messages are available.
 // Returns an error if none of the provided names match any message types in the log.
-func (p *Parser) SetFilter(names []string) error {
+func (p *Parser) SetFilter(names ...string) error {
 	p.filterTypes = make(map[uint8]bool)
 	var invalidNames []string
 
@@ -203,7 +203,7 @@ func (p *Parser) GetSlice(start, end int64, sliceType SliceType) ([]*Message, er
 	var messages []*Message
 	for {
 		msg, err := p.ReadMessage()
-		if err == io.EOF {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
 		if err != nil {
