@@ -12,13 +12,19 @@ go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It 
 
 ## Current Status
 
+### v1.0.0
 - [x] Two-pass parsing architecture (very slow and ineffective)
 - [x] FMT (format) message parsing
 - [x] Message schema discovery
 - [x] Data message parsing
 - [x] Message filtering
-- [  ] Message statistics
-- [  ] Metadata extraction
+
+### v1.1.0
+- [x] Message tracking (LineNo, TimeUS)
+- [x] Log slicing by line number or time
+- [x] Units and multipliers support (FMTU)
+
+### v2.0.0
 - [  ] Performance improvements
 
 See [TODO](https://github.com/pryamcem/go-dataflash/tree/master/TODO.md)
@@ -26,6 +32,8 @@ See [TODO](https://github.com/pryamcem/go-dataflash/tree/master/TODO.md)
 ## Usage
 
 See [examples/parse_log](https://github.com/pryamcem/go-dataflash/tree/master/examples/parse_log) for a complete working example.
+
+### Basic Usage
 
 ```go
 import "github.com/pryamcem/go-dataflash"
@@ -39,6 +47,50 @@ for {
         break
     }
     // Process msg.Name and msg.Fields
+}
+```
+
+### Filtering Messages
+
+```go
+parser.SetFilter("GPS", "IMU")  // Only parse GPS and IMU messages
+
+for {
+    msg, err := parser.ReadMessage()
+    if err == io.EOF {
+        break
+    }
+    // msg.Name will be either "GPS" or "IMU"
+}
+```
+
+### Units and Scaled Values
+
+Fields are automatically scaled based on their format character and FMTU multipliers:
+
+```go
+msg, _ := parser.ReadMessage()
+
+// Fields are already scaled during parsing
+// - Format characters like 'c', 'e', 'L' include built-in scaling
+// - FMTU multipliers are applied for other formats (e.g., 'Q', 'I')
+rawTimeUS := msg.Fields["TimeUS"]  // uint64 value
+
+// Get scaled value with unit (returns any type)
+scaled, unit, _ := msg.GetScaled("TimeUS")  // float64(44.167), "s" (F mult: /1e6)
+
+// GPS altitude uses format 'e' (int32*100) - already scaled, type preserved
+alt, unit, _ := msg.GetScaled("Alt")  // float64(275.3), "m" (no mult applied)
+
+// Status field with no multiplier - original type preserved
+status, _, _ := msg.GetScaled("Status")  // uint8(3) (original type)
+
+// Get all fields with units (types preserved when no scaling needed)
+scaledFields := msg.GetScaledFields()
+for name, sv := range scaledFields {
+    if sv.Unit != "" {
+        fmt.Printf("%s: %v %s\n", name, sv.Value, sv.Unit)
+    }
 }
 ```
 

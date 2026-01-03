@@ -133,6 +133,7 @@ func (p *Parser) ReadMessage() (*Message, error) {
 			Fields: fields,
 			LineNo: p.lineNo,
 			TimeUS: timeUS,
+			schema: schema,
 		}, nil
 	}
 }
@@ -233,7 +234,7 @@ func (p *Parser) GetSlice(start, end int64, sliceType SliceType) ([]*Message, er
 	return messages, nil
 }
 
-// buildSchemas performs the first pass to read all FMT messages.
+// buildSchemas performs the first pass to read all FMT and FMTU messages.
 func (p *Parser) buildSchemas() error {
 	for {
 		msgType, err := p.readMessageHeader()
@@ -251,6 +252,40 @@ func (p *Parser) buildSchemas() error {
 				return err
 			}
 			p.schemas[schema.Type] = schema
+		} else if schema, exists := p.schemas[msgType]; exists && schema.Name == "FMTU" {
+			// Decode FMTU message to get units and multipliers
+			bodySize := int(schema.Length) - HeaderSize
+			body := make([]byte, bodySize)
+			if _, err := io.ReadFull(p.file, body); err != nil {
+				continue
+			}
+
+			fields, err := DecodeMessageBody(body, schema)
+			if err != nil {
+				// Skip malformed FMTU messages
+				continue
+			}
+
+			// Extract FmtType, UnitIds, MultIds fields
+			fmtType, ok := fields["FmtType"].(uint8)
+			if !ok {
+				continue
+			}
+			unitIds, ok := fields["UnitIds"].(string)
+			if !ok {
+				continue
+			}
+			multIds, ok := fields["MultIds"].(string)
+			if !ok {
+				continue
+			}
+
+			// Update the corresponding schema with units and multipliers
+			if targetSchema, exists := p.schemas[fmtType]; exists {
+				targetSchema.Units = unitIds
+				targetSchema.Mults = multIds
+				p.schemas[fmtType] = targetSchema
+			}
 		} else {
 			// Unknown message type - sync to next header
 			if err := p.syncToNextHeader(); err != nil {

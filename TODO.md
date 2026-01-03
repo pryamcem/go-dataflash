@@ -1,12 +1,9 @@
 # go-dataflash TODO
 
-## v2.0 - Nice-to-Have Features
+## v1.x - API Improvements
 
-### Message Statistics
-- [ ] Add `Stats` struct with message counts, time ranges, duration
-- [ ] Add tests for stats calculation
-- [ ] Implement `GetStats() Stats` method
-- [ ] Track stats during parsing (minimal overhead)
+### ~~Message Statistics~~ (SKIPPED)
+**Why skipped**: Users can easily calculate basic stats (message counts, rates, duration) themselves by iterating through messages. Complex stats (sample rate consistency, gap analysis) add too much complexity for minimal benefit. Keep the library focused on parsing, not analysis.
 
 ### Iterator Pattern (Optional)
 - [ ] Add tests for iterator pattern
@@ -23,24 +20,31 @@
 - [ ] Add `Message.GetBool(field string) (bool, error)`
 - [ ] Add convenience methods for common fields (TimeUS, Lat, Lng, Alt)
 
-## v2.x - Metadata Extraction (Medium effort)
+## ~~Metadata Extraction~~ (SKIPPED)
+**Why skipped**: 
+- No standard format across firmwares (ArduPilot, PX4, iNav, etc.)
+- Requires brittle pattern matching that breaks with firmware updates
+- Not all logs have MSG messages with metadata
+- Users can easily filter MSG messages themselves: `parser.SetFilter("MSG")`
+- Adds maintenance burden with little value
+- Keep library simple: parse data reliably, let users interpret metadata
 
-### MSG Message Parsing
-- [ ] Add `Metadata` struct (Platform, Version, Commit, Hardware, etc.)
-- [ ] Add tests for metadata extraction
-- [ ] Extract platform from first MSG (ArduPlane, ArduCopter, etc.)
-- [ ] Extract version from MSG (e.g., V4.6.3)
-- [ ] Extract git commit hash from MSG (e.g., 3fc7011a)
-- [ ] Extract hardware info from MSG messages
-- [ ] Add `GetMetadata() Metadata` method
+## v1.1 - Units and Multipliers Support ✓ COMPLETED
 
-### Message Type List
-- [ ] Build list of available message types during schema building
-- [ ] Add `GetAvailableTypes() []string` method
-- [ ] Sort types alphabetically for better UX
-- [ ] Add to metadata struct
+**Approach**: Keep raw values in `Fields`, add scaled values via methods (backward compatible)
 
-## v3.0 - Performance Improvements (High effort)
+- [x] Parse FMTU messages and store units/mults in Schema
+- [x] Create unit/multiplier lookup maps (s→"seconds", F→1e-6, etc.)
+- [x] Add `ScaledValue` type with Value and Unit fields
+- [x] Add `msg.GetScaled(field)` → (value, unit, error)
+- [x] Add `msg.GetScaledFields()` → map of all scaled values
+- [x] Write tests and update docs
+- [x] Create units_example demonstrating scaling usage
+
+**Why useful**: Automatic unit conversion, proper data interpretation, backward compatible
+**Implementation**: Added units.go, message.go with GetScaled methods, updated parser to parse FMTU messages during schema building phase
+
+## v2.x - Performance Improvements (High Priority)
 
 ### Buffered Reader
 - [ ] Replace direct file I/O with `bufio.Reader`
@@ -56,11 +60,10 @@
 - [ ] Consider memory vs speed tradeoffs
 - [ ] Make configurable (workers count)
 
-## Future Ideas (v4.0+)
+## Future Ideas (v3.0+)
 
 - [ ] Support for TLOG format (telemetry logs)
 - [ ] Message indexing for fast random access
 - [ ] CSV export functionality
 - [ ] Streaming API for real-time log processing
-- [ ] Unit/multiplier support (FMTU messages)
 - [ ] Schema validation and version checking
