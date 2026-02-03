@@ -64,25 +64,6 @@ for {
 }
 ```
 
-### Super fast
-Parsing 48Mb log with 1,109,301 messages for 1.7s and parsing only GPS and IMU for 0.45s.
-[See benchmark](https://github.com/pryamcem/go-dataflash/tree/master/benchmark_test.go) and try on your logs.
-```
-goos: linux
-goarch: amd64
-pkg: github.com/pryamcem/go-dataflash
-cpu: 11th Gen Intel(R) Core(TM) i7-1185G7 @ 3.00GHz
-BenchmarkParseAllMessages-8   	       1	1567094441 ns/op	1644086928 B/op	15049412 allocs/op
-BenchmarkParseAllMessages-8   	       1	1560083874 ns/op	1644071344 B/op	15049393 allocs/op
-BenchmarkParseAllMessages-8   	       1	1874030880 ns/op	1644079008 B/op	15049424 allocs/op
-BenchmarkParseFiltered-8      	       3	 446275414 ns/op	67733824 B/op	  515493 allocs/op
-BenchmarkParseFiltered-8      	       3	 462084433 ns/op	67733792 B/op	  515493 allocs/op
-BenchmarkParseFiltered-8      	       3	 450877264 ns/op	67733733 B/op	  515492 allocs/op
-PASS
-ok  	github.com/pryamcem/go-dataflash	9.974s
-```
-
-
 ### Units and Scaled Values
 
 Fields are automatically scaled based on their format character and FMTU multipliers:
@@ -111,6 +92,24 @@ for name, sv := range scaledFields {
         fmt.Printf("%s: %v %s\n", name, sv.Value, sv.Unit)
     }
 }
+```
+
+## Super fast
+Parsing 48Mb log with 1,109,301 messages for 1.7s and parsing only GPS and IMU for 0.45s.
+[See benchmark](https://github.com/pryamcem/go-dataflash/tree/master/benchmark_test.go) and try on your logs.
+```
+goos: linux
+goarch: amd64
+pkg: github.com/pryamcem/go-dataflash
+cpu: 11th Gen Intel(R) Core(TM) i7-1185G7 @ 3.00GHz
+BenchmarkParseAllMessages-8   	       1	1567094441 ns/op	1644086928 B/op	15049412 allocs/op
+BenchmarkParseAllMessages-8   	       1	1560083874 ns/op	1644071344 B/op	15049393 allocs/op
+BenchmarkParseAllMessages-8   	       1	1874030880 ns/op	1644079008 B/op	15049424 allocs/op
+BenchmarkParseFiltered-8      	       3	 446275414 ns/op	67733824 B/op	  515493 allocs/op
+BenchmarkParseFiltered-8      	       3	 462084433 ns/op	67733792 B/op	  515493 allocs/op
+BenchmarkParseFiltered-8      	       3	 450877264 ns/op	67733733 B/op	  515492 allocs/op
+PASS
+ok  	github.com/pryamcem/go-dataflash	9.974s
 ```
 
 ## DataFlash Format Overview
