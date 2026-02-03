@@ -47,11 +47,10 @@
 ## v2.x - Performance Improvements (High Priority)
 
 ### Buffered Reader
-- [ ] Replace direct file I/O with `bufio.Reader`
-- [ ] Add `NewParserWithBuffer(filename, bufferSize)` constructor
-- [ ] Benchmark before/after to measure improvement
-- [ ] Tune buffer size (test 64KB, 128KB, 256KB)
-- [ ] Update docs with performance notes
+- [x] Replace direct file I/O with `bufio.Reader`
+- [x] Benchmark before/after to measure improvement
+- [x] Tune buffer size (test 64KB, 128KB, 256KB)
+- [x] Update docs with performance notes
 
 ### Parallel Parsing (Optional)
 - [ ] Add `ReadAllMessages() ([]*Message, error)` method
