@@ -1,10 +1,16 @@
 package dataflash
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
+)
+
+const (
+	readBufferSize = 64 * 1024
+	maxBodySize    = 256
 )
 
 // DataFlash binary format constants
@@ -19,9 +25,15 @@ const (
 // Parser reads and parses ArduPilot DataFlash binary logs.
 type Parser struct {
 	file        *os.File
+	reader      *bufio.Reader
 	schemas     map[uint8]*Schema
 	filterTypes map[uint8]bool
 	lineNo      int64 // Current message sequence number
+
+	// Pre-allocated buffers
+	headerBuf [HeaderSize]byte
+	bodyBuf   [maxBodySize]byte
+	syncBuf   [1]byte
 }
 
 // NewParser creates a new parser for the given DataFlash log file.
@@ -34,6 +46,7 @@ func NewParser(filename string) (*Parser, error) {
 
 	p := &Parser{
 		file:    file,
+		reader:  bufio.NewReaderSize(file, readBufferSize),
 		schemas: make(map[uint8]*Schema),
 	}
 
@@ -44,7 +57,7 @@ func NewParser(filename string) (*Parser, error) {
 	}
 
 	// Rewind for reading messages
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
+	if err := p.rewind(); err != nil {
 		file.Close()
 		return nil, fmt.Errorf("failed to rewind file: %w", err)
 	}
@@ -99,14 +112,14 @@ func (p *Parser) ReadMessage() (*Message, error) {
 		// Check filter before reading body
 		if p.filterTypes != nil && !p.filterTypes[msgType] {
 			bodySize := int(schema.Length) - HeaderSize
-			p.file.Seek(int64(bodySize), io.SeekCurrent)
+			p.reader.Discard(bodySize)
 			continue
 		}
 
-		// Read message body
+		// Read message body using pre-allocated buffer
 		bodySize := int(schema.Length) - HeaderSize
-		body := make([]byte, bodySize)
-		if _, err := io.ReadFull(p.file, body); err != nil {
+		body := p.bodyBuf[:bodySize]
+		if _, err := io.ReadFull(p.reader, body); err != nil {
 			return nil, err
 		}
 
@@ -168,9 +181,7 @@ func (p *Parser) SetFilter(names ...string) error {
 	}
 
 	// Rewind to start so filter applies from beginning
-	p.lineNo = 0
-	_, err := p.file.Seek(0, io.SeekStart)
-	return err
+	return p.rewind()
 }
 
 func (p *Parser) ClearFilter() {
@@ -180,9 +191,17 @@ func (p *Parser) ClearFilter() {
 // Rewind resets the file position to the beginning.
 // Useful for re-reading messages or starting a new iteration.
 func (p *Parser) Rewind() error {
+	return p.rewind()
+}
+
+// rewind is the internal helper that resets file position and buffered reader.
+func (p *Parser) rewind() error {
 	p.lineNo = 0
-	_, err := p.file.Seek(0, io.SeekStart)
-	return err
+	if _, err := p.file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	p.reader.Reset(p.file)
+	return nil
 }
 
 // SliceType specifies how to slice the log.
@@ -255,8 +274,8 @@ func (p *Parser) buildSchemas() error {
 		} else if schema, exists := p.schemas[msgType]; exists && schema.Name == "FMTU" {
 			// Decode FMTU message to get units and multipliers
 			bodySize := int(schema.Length) - HeaderSize
-			body := make([]byte, bodySize)
-			if _, err := io.ReadFull(p.file, body); err != nil {
+			body := p.bodyBuf[:bodySize]
+			if _, err := io.ReadFull(p.reader, body); err != nil {
 				continue
 			}
 
@@ -300,71 +319,62 @@ func (p *Parser) buildSchemas() error {
 	return nil
 }
 
-// syncToNextHeader scans forward byte-by-byte to find the next valid message header.
+// syncToNextHeader scans forward to find the next valid message header.
 // This is used when we encounter unknown message types during schema building.
+// Uses Peek and Discard to avoid UnreadByte issues with buffered I/O.
 func (p *Parser) syncToNextHeader() error {
 	for {
-		byte1 := make([]byte, 1)
-		_, err := p.file.Read(byte1)
+		// Peek at the next 2 bytes to check for header pattern
+		peeked, err := p.reader.Peek(2)
 		if err != nil {
 			return err
 		}
 
-		if byte1[0] == HEAD1 {
-			// Found potential first magic byte, check second
-			byte2 := make([]byte, 1)
-			_, err := p.file.Read(byte2)
-			if err != nil {
-				return err
-			}
-
-			if byte2[0] == HEAD2 {
-				// Found valid header! Seek back 2 bytes so next read gets the full header
-				_, err := p.file.Seek(-2, io.SeekCurrent)
-				return err
-			}
-			// Second byte didn't match, seek back 1 and continue
-			p.file.Seek(-1, io.SeekCurrent)
+		if peeked[0] == HEAD1 && peeked[1] == HEAD2 {
+			// Found valid header! Don't consume it - let readMessageHeader do that
+			return nil
 		}
+
+		// Not a header, skip one byte and try again
+		p.reader.Discard(1)
 	}
 }
 
 // readMessageHeader reads and validates a 3-byte message header.
 func (p *Parser) readMessageHeader() (uint8, error) {
-	header := make([]byte, HeaderSize)
-	_, err := io.ReadFull(p.file, header)
+	_, err := io.ReadFull(p.reader, p.headerBuf[:])
 	if err != nil {
 		return 0, err
 	}
 
-	if header[0] != HEAD1 || header[1] != HEAD2 {
+	if p.headerBuf[0] != HEAD1 || p.headerBuf[1] != HEAD2 {
 		return 0, fmt.Errorf("invalid header")
 	}
 
-	return header[2], nil
+	return p.headerBuf[2], nil
 }
 
 // decodeFMTMessage reads and decodes a FMT message from the current file position.
 func (p *Parser) decodeFMTMessage() (*Schema, error) {
 	var schema Schema
 
-	if err := binary.Read(p.file, binary.LittleEndian, &schema.Type); err != nil {
+	if err := binary.Read(p.reader, binary.LittleEndian, &schema.Type); err != nil {
 		return nil, fmt.Errorf("reading FMT type: %w", err)
 	}
-	if err := binary.Read(p.file, binary.LittleEndian, &schema.Length); err != nil {
+	if err := binary.Read(p.reader, binary.LittleEndian, &schema.Length); err != nil {
 		return nil, fmt.Errorf("reading FMT length: %w", err)
 	}
 
 	var err error
-	schema.Name, err = readString(p.file, 4)
+	schema.Name, err = readString(p.reader, 4)
 	if err != nil {
 		return nil, err
 	}
-	schema.Format, err = readString(p.file, 16)
+	schema.Format, err = readString(p.reader, 16)
 	if err != nil {
 		return nil, err
 	}
-	schema.Columns, err = readString(p.file, 64)
+	schema.Columns, err = readString(p.reader, 64)
 	if err != nil {
 		return nil, err
 	}
@@ -372,10 +382,10 @@ func (p *Parser) decodeFMTMessage() (*Schema, error) {
 	return &schema, nil
 }
 
-// readString reads a null-terminated string of maximum length from the file.
-func readString(file *os.File, maxLen int) (string, error) {
+// readString reads a null-terminated string of maximum length from the reader.
+func readString(r io.Reader, maxLen int) (string, error) {
 	buf := make([]byte, maxLen)
-	_, err := file.Read(buf)
+	_, err := io.ReadFull(r, buf)
 	if err != nil {
 		return "", err
 	}
