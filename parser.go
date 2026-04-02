@@ -24,7 +24,7 @@ const (
 
 // Parser reads and parses ArduPilot DataFlash binary logs.
 type Parser struct {
-	file        *os.File
+	source      io.ReadSeeker
 	reader      *bufio.Reader
 	schemas     map[uint8]*Schema
 	filterTypes map[uint8]bool
@@ -36,6 +36,28 @@ type Parser struct {
 	syncBuf   [1]byte
 }
 
+// NewParserFromSource creates a new parser for the given source.
+// The source must be seekable as the parser performs two passes.
+func NewParserFromSource(source io.ReadSeeker) (*Parser, error) {
+	p := &Parser{
+		source:  source,
+		reader:  bufio.NewReaderSize(source, readBufferSize),
+		schemas: make(map[uint8]*Schema),
+	}
+
+	// Pass 1: Build schema map from FMT messages
+	if err := p.buildSchemas(); err != nil {
+		return nil, fmt.Errorf("failed to build schemas: %w", err)
+	}
+
+	// Rewind for reading messages
+	if err := p.rewind(); err != nil {
+		return nil, fmt.Errorf("failed to rewind source: %w", err)
+	}
+
+	return p, nil
+}
+
 // NewParser creates a new parser for the given DataFlash log file.
 // It performs a first pass to build the schema map from FMT messages.
 func NewParser(filename string) (*Parser, error) {
@@ -44,30 +66,21 @@ func NewParser(filename string) (*Parser, error) {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 
-	p := &Parser{
-		file:    file,
-		reader:  bufio.NewReaderSize(file, readBufferSize),
-		schemas: make(map[uint8]*Schema),
-	}
-
-	// Pass 1: Build schema map from FMT messages
-	if err := p.buildSchemas(); err != nil {
+	p, err := NewParserFromSource(file)
+	if err != nil {
 		file.Close()
-		return nil, fmt.Errorf("failed to build schemas: %w", err)
-	}
-
-	// Rewind for reading messages
-	if err := p.rewind(); err != nil {
-		file.Close()
-		return nil, fmt.Errorf("failed to rewind file: %w", err)
+		return nil, err
 	}
 
 	return p, nil
 }
 
-// Close closes the underlying file.
+// Close closes the underlying source if it implements io.Closer.
 func (p *Parser) Close() error {
-	return p.file.Close()
+	if closer, ok := p.source.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
 }
 
 // GetSchemas returns a map of all message schemas found in the log.
@@ -197,10 +210,10 @@ func (p *Parser) Rewind() error {
 // rewind is the internal helper that resets file position and buffered reader.
 func (p *Parser) rewind() error {
 	p.lineNo = 0
-	if _, err := p.file.Seek(0, io.SeekStart); err != nil {
+	if _, err := p.source.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	p.reader.Reset(p.file)
+	p.reader.Reset(p.source)
 	return nil
 }
 

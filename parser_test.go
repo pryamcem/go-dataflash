@@ -1,7 +1,9 @@
 package dataflash
 
 import (
+	"bytes"
 	"io"
+	"os"
 	"testing"
 )
 
@@ -9,6 +11,33 @@ const (
 	// Origin: https://discuss.ardupilot.org/t/vtol-crash-after-transition-to-fbwa/138484
 	testFile = "testdata/testlog.bin"
 )
+
+func TestNewParserFromSource(t *testing.T) {
+	// Read file into memory
+	data, err := os.ReadFile(testFile)
+	if err != nil {
+		t.Fatalf("failed to read test file: %v", err)
+	}
+
+	// Create bytes.Reader which implements io.ReadSeeker
+	source := bytes.NewReader(data)
+
+	// Create parser from source
+	parser, err := NewParserFromSource(source)
+	if err != nil {
+		t.Fatalf("failed to create parser from source: %v", err)
+	}
+	defer parser.Close()
+
+	// Verify we can read a message
+	msg, err := parser.ReadMessage()
+	if err != nil {
+		t.Fatalf("error reading message: %v", err)
+	}
+	if msg == nil {
+		t.Fatal("expected message, got nil")
+	}
+}
 
 func TestParserFilter(t *testing.T) {
 	// Create parser
