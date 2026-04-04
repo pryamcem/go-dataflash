@@ -27,6 +27,9 @@ go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It 
 ### v1.2.0
 - [x] Performance improvements (~15-40 times faster with bufio)
 
+### v1.3.0
+- [x] `NewParserFromSource` — parse from any `io.ReadSeeker`, not just files (by [@yur4uwe](https://github.com/yur4uwe))
+
 See [TODO](https://github.com/pryamcem/go-dataflash/tree/master/TODO.md)
 
 ## Usage
