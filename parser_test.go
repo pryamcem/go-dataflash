@@ -39,6 +39,46 @@ func TestNewParserFromSource(t *testing.T) {
 	}
 }
 
+func TestRewindNonFileSource(t *testing.T) {
+	data, err := os.ReadFile(testFile)
+	if err != nil {
+		t.Fatalf("failed to read test file: %v", err)
+	}
+
+	parser, err := NewParserFromSource(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+	defer parser.Close()
+
+	// SetFilter should rewind and return only GPS messages
+	if err := parser.SetFilter("GPS"); err != nil {
+		t.Fatalf("failed to set filter: %v", err)
+	}
+	msg, err := parser.ReadMessage()
+	if err != nil {
+		t.Fatalf("error reading message after SetFilter: %v", err)
+	}
+	if msg.Name != "GPS" {
+		t.Errorf("expected GPS, got %s", msg.Name)
+	}
+
+	// GetSlice should rewind internally and return messages in range
+	parser.ClearFilter()
+	messages, err := parser.GetSlice(1, 5, SliceByLineNo)
+	if err != nil {
+		t.Fatalf("error getting slice: %v", err)
+	}
+	if len(messages) == 0 {
+		t.Error("expected messages in slice, got none")
+	}
+	for _, m := range messages {
+		if m.LineNo < 1 || m.LineNo >= 5 {
+			t.Errorf("message LineNo %d outside range [1, 5)", m.LineNo)
+		}
+	}
+}
+
 func TestCloseNonCloserSource(t *testing.T) {
 	data, err := os.ReadFile(testFile)
 	if err != nil {
