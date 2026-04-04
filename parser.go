@@ -165,7 +165,7 @@ func (p *Parser) ReadMessage() (*Message, error) {
 }
 
 // SetFilter creates filter rule to parse specific message names.
-// Automatically rewinds the file to the beginning so all messages are available.
+// Automatically rewinds the source to the beginning so all messages are available.
 // Returns an error if none of the provided names match any message types in the log.
 func (p *Parser) SetFilter(names ...string) error {
 	p.filterTypes = make(map[uint8]bool)
@@ -201,7 +201,7 @@ func (p *Parser) ClearFilter() {
 	p.filterTypes = nil
 }
 
-// Rewind resets the file position to the beginning.
+// Rewind resets the source position to the beginning.
 // Useful for re-reading messages or starting a new iteration.
 func (p *Parser) Rewind() error {
 	return p.rewind()
