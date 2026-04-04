@@ -39,6 +39,23 @@ func TestNewParserFromSource(t *testing.T) {
 	}
 }
 
+func TestCloseNonCloserSource(t *testing.T) {
+	data, err := os.ReadFile(testFile)
+	if err != nil {
+		t.Fatalf("failed to read test file: %v", err)
+	}
+
+	// bytes.Reader does not implement io.Closer
+	parser, err := NewParserFromSource(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+
+	if err := parser.Close(); err != nil {
+		t.Errorf("expected nil error closing non-closer source, got: %v", err)
+	}
+}
+
 func TestParserFilter(t *testing.T) {
 	// Create parser
 	parser, err := NewParser("testdata/testlog.bin")
