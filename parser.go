@@ -199,11 +199,11 @@ func (p *Parser) rewind() error {
 }
 
 // SliceType specifies how to slice the log.
-type SliceType string
+type SliceType int
 
 const (
-	SliceByLineNo SliceType = "LineNo"
-	SliceByTimeUS SliceType = "TimeUS"
+	SliceByLineNo SliceType = iota
+	SliceByTimeUS
 )
 
 // GetSlice returns messages within the specified range.
@@ -231,7 +231,7 @@ func (p *Parser) GetSlice(start, end int64, sliceType SliceType) ([]*Message, er
 		case SliceByTimeUS:
 			value = msg.TimeUS
 		default:
-			return nil, fmt.Errorf("invalid slice type: %s", sliceType)
+			return nil, fmt.Errorf("invalid slice type: %d", sliceType)
 		}
 
 		if value >= start && value < end {
