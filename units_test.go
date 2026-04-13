@@ -1,15 +1,20 @@
 package dataflash
 
 import (
+	"os"
 	"testing"
 )
 
 func TestSchemaHasUnitsAndMults(t *testing.T) {
-	parser, err := NewParser(testFile)
+	f, err := os.Open(testFile)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f.Close()
+	parser, err := NewParser(f)
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
-	defer parser.Close()
 
 	schemas := parser.GetSchemas()
 
@@ -39,11 +44,15 @@ func TestSchemaHasUnitsAndMults(t *testing.T) {
 }
 
 func TestGetScaled(t *testing.T) {
-	parser, err := NewParser(testFile)
+	f, err := os.Open(testFile)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f.Close()
+	parser, err := NewParser(f)
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
-	defer parser.Close()
 
 	// Read until we find a message with TimeUS
 	if err := parser.SetFilter("IMU"); err != nil {
@@ -81,11 +90,15 @@ func TestGetScaled(t *testing.T) {
 }
 
 func TestGetScaledFields(t *testing.T) {
-	parser, err := NewParser(testFile)
+	f, err := os.Open(testFile)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f.Close()
+	parser, err := NewParser(f)
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
-	defer parser.Close()
 
 	if err := parser.SetFilter("GPS"); err != nil {
 		t.Skip("No GPS messages in log")
@@ -131,11 +144,15 @@ func TestGetScaledFields(t *testing.T) {
 }
 
 func TestGetScaledInvalidField(t *testing.T) {
-	parser, err := NewParser(testFile)
+	f, err := os.Open(testFile)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f.Close()
+	parser, err := NewParser(f)
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
-	defer parser.Close()
 
 	if err := parser.SetFilter("IMU"); err != nil {
 		t.Fatalf("failed to set filter: %v", err)

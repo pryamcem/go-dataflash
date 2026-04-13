@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/pryamcem/go-dataflash"
+	"github.com/pryamcem/go-dataflash/v2"
 )
 
 func main() {
@@ -15,11 +15,15 @@ func main() {
 		os.Exit(1)
 	}
 	log.Println("Creating parser")
-	parser, err := dataflash.NewParser(os.Args[1])
+	f, err := os.Open(os.Args[1])
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer parser.Close()
+	defer f.Close()
+	parser, err := dataflash.NewParser(f)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Filter for GPS messages which have many fields with units
 	log.Println("Set filters")
