@@ -2,6 +2,7 @@ package dataflash
 
 import (
 	"io"
+	"os"
 	"testing"
 )
 
@@ -9,8 +10,13 @@ const benchmarkFile = "/home/pryamcem/Drones/NORDA/Misc/gps-records/log_23_2026-
 
 func BenchmarkParseAllMessages(b *testing.B) {
 	for b.Loop() {
-		parser, err := NewParser(benchmarkFile)
+		f, err := os.Open(benchmarkFile)
 		if err != nil {
+			b.Fatalf("failed to open file: %v", err)
+		}
+		parser, err := NewParser(f)
+		if err != nil {
+			f.Close()
 			b.Fatalf("failed to create parser: %v", err)
 		}
 
@@ -20,21 +26,28 @@ func BenchmarkParseAllMessages(b *testing.B) {
 				break
 			}
 			if err != nil {
+				f.Close()
 				b.Fatalf("error reading message: %v", err)
 			}
 		}
-		parser.Close()
+		f.Close()
 	}
 }
 
 func BenchmarkParseFiltered(b *testing.B) {
 	for b.Loop() {
-		parser, err := NewParser(benchmarkFile)
+		f, err := os.Open(benchmarkFile)
 		if err != nil {
+			b.Fatalf("failed to open file: %v", err)
+		}
+		parser, err := NewParser(f)
+		if err != nil {
+			f.Close()
 			b.Fatalf("failed to create parser: %v", err)
 		}
 
 		if err := parser.SetFilter("GPS", "IMU"); err != nil {
+			f.Close()
 			b.Fatalf("failed to set filter: %v", err)
 		}
 
@@ -44,9 +57,10 @@ func BenchmarkParseFiltered(b *testing.B) {
 				break
 			}
 			if err != nil {
+				f.Close()
 				b.Fatalf("error reading message: %v", err)
 			}
 		}
-		parser.Close()
+		f.Close()
 	}
 }

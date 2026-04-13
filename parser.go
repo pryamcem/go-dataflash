@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 )
 
 const (
@@ -36,9 +35,9 @@ type Parser struct {
 	syncBuf   [1]byte
 }
 
-// NewParserFromSource creates a new parser for the given source.
+// NewParser creates a new parser for the given source.
 // The source must be seekable as the parser performs two passes.
-func NewParserFromSource(source io.ReadSeeker) (*Parser, error) {
+func NewParser(source io.ReadSeeker) (*Parser, error) {
 	p := &Parser{
 		source:  source,
 		reader:  bufio.NewReaderSize(source, readBufferSize),
@@ -58,28 +57,8 @@ func NewParserFromSource(source io.ReadSeeker) (*Parser, error) {
 	return p, nil
 }
 
-// NewParser creates a new parser for the given DataFlash log file.
-// It performs a first pass to build the schema map from FMT messages.
-func NewParser(filename string) (*Parser, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-
-	p, err := NewParserFromSource(file)
-	if err != nil {
-		file.Close()
-		return nil, err
-	}
-
-	return p, nil
-}
-
-// Close closes the underlying source if it implements io.Closer.
+// Close is a no-op. The caller is responsible for closing the source.
 func (p *Parser) Close() error {
-	if closer, ok := p.source.(io.Closer); ok {
-		return closer.Close()
-	}
 	return nil
 }
 
