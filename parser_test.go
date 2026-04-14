@@ -64,7 +64,9 @@ func TestRewindNonFileSource(t *testing.T) {
 	}
 
 	// GetSlice should rewind internally and return messages in range
-	parser.ClearFilter()
+	if err := parser.SetFilter(); err != nil {
+		t.Fatalf("failed to clear filter: %v", err)
+	}
 	messages, err := parser.GetSlice(1, 5, SliceByLineNo)
 	if err != nil {
 		t.Fatalf("error getting slice: %v", err)
@@ -127,6 +129,43 @@ func TestParserFilter(t *testing.T) {
 			t.Errorf("expected GPS, got %s", msg.Name)
 		}
 	}
+}
+
+func TestClearFilter(t *testing.T) {
+	f, err := os.Open(testFile)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f.Close()
+	parser, err := NewParser(f)
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+
+	// Set filter to GPS only
+	if err := parser.SetFilter("GPS"); err != nil {
+		t.Fatalf("failed to set filter: %v", err)
+	}
+
+	// Clear filter — no args
+	if err := parser.SetFilter(); err != nil {
+		t.Fatalf("failed to clear filter: %v", err)
+	}
+
+	// Should now receive non-GPS messages too
+	for range 20 {
+		msg, err := parser.ReadMessage()
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("error reading message: %v", err)
+		}
+		if msg.Name != "GPS" {
+			return // found a non-GPS message — filter was cleared
+		}
+	}
+	t.Error("expected non-GPS messages after clearing filter")
 }
 
 func TestSetFilterInvalid(t *testing.T) {

@@ -62,9 +62,14 @@ func (p *Parser) Close() error {
 	return nil
 }
 
-// GetSchemas returns a map of all message schemas found in the log.
+// GetSchemas returns a copy of all message schemas found in the log.
 func (p *Parser) GetSchemas() map[uint8]*Schema {
-	return p.schemas
+	result := make(map[uint8]*Schema, len(p.schemas))
+	for k, v := range p.schemas {
+		schema := *v
+		result[k] = &schema
+	}
+	return result
 }
 
 // ReadMessage reads and parses the next message from the log.
@@ -143,10 +148,16 @@ func (p *Parser) ReadMessage() (*Message, error) {
 	}
 }
 
-// SetFilter creates filter rule to parse specific message names.
-// Automatically rewinds the source to the beginning so all messages are available.
-// Returns an error if none of the provided names match any message types in the log.
+// SetFilter restricts parsing to the given message names.
+// Automatically rewinds so all messages are available from the start.
+// Passing no names clears the filter and all message types are returned.
+// Returns an error if any name does not match a message type in the log.
 func (p *Parser) SetFilter(names ...string) error {
+	if len(names) == 0 {
+		p.filterTypes = nil
+		return p.rewind()
+	}
+
 	p.filterTypes = make(map[uint8]bool)
 	var invalidNames []string
 
@@ -176,10 +187,6 @@ func (p *Parser) SetFilter(names ...string) error {
 	return p.rewind()
 }
 
-func (p *Parser) ClearFilter() {
-	p.filterTypes = nil
-}
-
 // Rewind resets the source position to the beginning.
 // Useful for re-reading messages or starting a new iteration.
 func (p *Parser) Rewind() error {
@@ -197,11 +204,11 @@ func (p *Parser) rewind() error {
 }
 
 // SliceType specifies how to slice the log.
-type SliceType string
+type SliceType int
 
 const (
-	SliceByLineNo SliceType = "LineNo"
-	SliceByTimeUS SliceType = "TimeUS"
+	SliceByLineNo SliceType = iota
+	SliceByTimeUS
 )
 
 // GetSlice returns messages within the specified range.
@@ -229,7 +236,7 @@ func (p *Parser) GetSlice(start, end int64, sliceType SliceType) ([]*Message, er
 		case SliceByTimeUS:
 			value = msg.TimeUS
 		default:
-			return nil, fmt.Errorf("invalid slice type: %s", sliceType)
+			return nil, fmt.Errorf("invalid slice type: %d", sliceType)
 		}
 
 		if value >= start && value < end {

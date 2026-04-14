@@ -65,28 +65,28 @@ func TestGetScaled(t *testing.T) {
 	}
 
 	// Test GetScaled on TimeUS
-	value, unit, err := msg.GetScaled("TimeUS")
+	sv, err := msg.GetScaled("TimeUS")
 	if err != nil {
 		t.Fatalf("GetScaled failed: %v", err)
 	}
 
 	// TimeUS should be scaled from microseconds to seconds
-	if unit != "seconds" && unit != "s" {
-		t.Errorf("expected TimeUS unit to be seconds, got %q", unit)
+	if sv.Unit != "seconds" && sv.Unit != "s" {
+		t.Errorf("expected TimeUS unit to be seconds, got %q", sv.Unit)
 	}
 
 	// Value should be float64 for scaled fields
-	floatVal, ok := value.(float64)
+	floatVal, ok := sv.Value.(float64)
 	if !ok {
-		t.Errorf("expected float64, got %T", value)
+		t.Errorf("expected float64, got %T", sv.Value)
 	}
 
 	// Scaled value should be reasonable (a few seconds, not millions)
 	if floatVal < 0 || floatVal > 1000 {
-		t.Errorf("scaled TimeUS seems wrong: %f %s", floatVal, unit)
+		t.Errorf("scaled TimeUS seems wrong: %f %s", floatVal, sv.Unit)
 	}
 
-	t.Logf("TimeUS: raw=%v, scaled=%v %s", msg.Fields["TimeUS"], value, unit)
+	t.Logf("TimeUS: raw=%v, scaled=%v %s", msg.Fields["TimeUS"], sv.Value, sv.Unit)
 }
 
 func TestGetScaledFields(t *testing.T) {
@@ -164,7 +164,7 @@ func TestGetScaledInvalidField(t *testing.T) {
 	}
 
 	// Try to get a field that doesn't exist
-	_, _, err = msg.GetScaled("NonExistentField")
+	_, err = msg.GetScaled("NonExistentField")
 	if err == nil {
 		t.Error("expected error for non-existent field")
 	}
