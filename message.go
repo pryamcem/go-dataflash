@@ -5,19 +5,19 @@ import (
 	"math"
 )
 
-// GetScaled returns the value and unit for a field.
+// GetScaled returns the ScaledValue for a field.
 // For fields whose format character includes scaling (c, C, e, E, L), the original value is returned.
 // For other formats, the FMTU multiplier is applied if present (returns float64).
 // Returns an error if the field doesn't exist.
-func (m *Message) GetScaled(field string) (any, string, error) {
+func (m *Message) GetScaled(field string) (ScaledValue, error) {
 	if m.schema == nil {
-		return nil, "", fmt.Errorf("no schema available for message")
+		return ScaledValue{}, fmt.Errorf("no schema available for message")
 	}
 
 	// Get value from fields
 	value, exists := m.Fields[field]
 	if !exists {
-		return nil, "", fmt.Errorf("field %q not found in message", field)
+		return ScaledValue{}, fmt.Errorf("field %q not found in message", field)
 	}
 
 	// Find field index in schema
@@ -31,7 +31,7 @@ func (m *Message) GetScaled(field string) (any, string, error) {
 	}
 
 	if fieldIndex == -1 {
-		return nil, "", fmt.Errorf("field %q not found in schema", field)
+		return ScaledValue{}, fmt.Errorf("field %q not found in schema", field)
 	}
 
 	// Get format character to determine if scaling was already applied during decoding
@@ -59,16 +59,13 @@ func (m *Message) GetScaled(field string) (any, string, error) {
 		floatValue, err := toFloat64(value)
 		if err != nil {
 			// Not numeric, return original value with unit
-			return value, getUnitName(unitChar), nil
+			return ScaledValue{Value: value, Unit: getUnitName(unitChar)}, nil
 		}
 		multiplier := getMultiplier(multChar)
 		scaledValue = floatValue * multiplier
 	}
 
-	// Get unit name
-	unit := getUnitName(unitChar)
-
-	return scaledValue, unit, nil
+	return ScaledValue{Value: scaledValue, Unit: getUnitName(unitChar)}, nil
 }
 
 // GetScaledFields returns a map of all fields with their units.
