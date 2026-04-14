@@ -6,9 +6,12 @@ import (
 	"testing"
 )
 
-const benchmarkFile = "/home/pryamcem/Drones/NORDA/Misc/gps-records/log_23_2026-1-21-17-45-58.bin"
+var benchmarkFile = os.Getenv("DATAFLASH_BENCH_FILE")
 
 func BenchmarkParseAllMessages(b *testing.B) {
+	if benchmarkFile == "" {
+		b.Skip("set DATAFLASH_BENCH_FILE to run benchmarks")
+	}
 	for b.Loop() {
 		f, err := os.Open(benchmarkFile)
 		if err != nil {
@@ -35,6 +38,9 @@ func BenchmarkParseAllMessages(b *testing.B) {
 }
 
 func BenchmarkParseFiltered(b *testing.B) {
+	if benchmarkFile == "" {
+		b.Skip("set DATAFLASH_BENCH_FILE to run benchmarks")
+	}
 	for b.Loop() {
 		f, err := os.Open(benchmarkFile)
 		if err != nil {

@@ -34,8 +34,6 @@ go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It 
 - Data message parsing
 - Message filtering
 
-See [TODO](https://github.com/pryamcem/go-dataflash/tree/master/TODO.md)
-
 ## Usage
 
 See [examples/parse_log](https://github.com/pryamcem/go-dataflash/tree/master/examples/parse_log) for a complete working example.
