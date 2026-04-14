@@ -2,33 +2,37 @@
 
 ArduPilot DataFlash log parser written in Go.
 
-## !!!Work in Progress
-
-This project is currently in early development and was created for fun and learning purposes. The code is raw and not ready for use. Expect breaking changes, incomplete features, and rough edges.
-
 ## About
 
 go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It reads flight telemetry data from ArduPilot-based flight controllers.
 
-## Current Status
+## Version History
 
-### v1.0.0
-- [x] Two-pass parsing architecture
-- [x] FMT (format) message parsing
-- [x] Message schema discovery
-- [x] Data message parsing
-- [x] Message filtering
-
-### v1.1.0
-- [x] Message tracking (LineNo, TimeUS)
-- [x] Log slicing by line number or time
-- [x] Units and multipliers support (FMTU)
-
-### v1.2.0
-- [x] Performance improvements (~15-40 times faster with bufio)
+### v2.0.0
+- Caller now owns the source — `NewParser` accepts `io.ReadSeeker`, `Close` is a no-op
+- `ClearFilter` removed — use `SetFilter()` with no arguments instead
+- `SliceType` changed from string to `int` enum for compile-time safety
+- `GetScaled` now returns `ScaledValue` instead of `(any, string, error)`
+- `GetSchemas` returns a copy to prevent external mutation
+- Module path updated to `/v2`
 
 ### v1.3.0
-- [x] `NewParserFromSource` — parse from any `io.ReadSeeker`, not just files (by [@yur4uwe](https://github.com/yur4uwe))
+- `NewParserFromSource` — parse from any `io.ReadSeeker`, not just files (by [@yur4uwe](https://github.com/yur4uwe))
+
+### v1.2.0
+- Performance improvements (~15-40 times faster with bufio)
+
+### v1.1.0
+- Message tracking (LineNo, TimeUS)
+- Log slicing by line number or time
+- Units and multipliers support (FMTU)
+
+### v1.0.0
+- Two-pass parsing architecture
+- FMT (format) message parsing
+- Message schema discovery
+- Data message parsing
+- Message filtering
 
 See [TODO](https://github.com/pryamcem/go-dataflash/tree/master/TODO.md)
 
@@ -39,14 +43,22 @@ See [examples/parse_log](https://github.com/pryamcem/go-dataflash/tree/master/ex
 ### Basic Usage
 
 ```go
-import "github.com/pryamcem/go-dataflash"
+import "github.com/pryamcem/go-dataflash/v2"
 
-parser, _ := dataflash.NewParser("log.bin")
-defer parser.Close()
+f, err := os.Open("log.bin")
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+
+parser, err := dataflash.NewParser(f)
+if err != nil {
+    log.Fatal(err)
+}
 
 for {
     msg, err := parser.ReadMessage()
-    if err == io.EOF {
+    if err == io.EOF || err == io.ErrUnexpectedEOF {
         break
     }
     // Process msg.Name and msg.Fields
@@ -60,11 +72,13 @@ parser.SetFilter("GPS", "IMU")  // Only parse GPS and IMU messages
 
 for {
     msg, err := parser.ReadMessage()
-    if err == io.EOF {
+    if err == io.EOF || err == io.ErrUnexpectedEOF {
         break
     }
     // msg.Name will be either "GPS" or "IMU"
 }
+
+parser.SetFilter()  // Clear filter, all message types returned
 ```
 
 ### Units and Scaled Values
@@ -79,14 +93,10 @@ msg, _ := parser.ReadMessage()
 // - FMTU multipliers are applied for other formats (e.g., 'Q', 'I')
 rawTimeUS := msg.Fields["TimeUS"]  // uint64 value
 
-// Get scaled value with unit (returns any type)
-scaled, unit, _ := msg.GetScaled("TimeUS")  // float64(44.167), "s" (F mult: /1e6)
-
-// GPS altitude uses format 'e' (int32*100) - already scaled, type preserved
-alt, unit, _ := msg.GetScaled("Alt")  // float64(275.3), "m" (no mult applied)
-
-// Status field with no multiplier - original type preserved
-status, _, _ := msg.GetScaled("Status")  // uint8(3) (original type)
+// Get scaled value with unit
+sv, _ := msg.GetScaled("TimeUS")  // sv.Value = float64(44.167), sv.Unit = "s"
+sv, _ = msg.GetScaled("Alt")      // sv.Value = float64(275.3),  sv.Unit = "m"
+sv, _ = msg.GetScaled("Status")   // sv.Value = uint8(3),        sv.Unit = ""
 
 // Get all fields with units (types preserved when no scaling needed)
 scaledFields := msg.GetScaledFields()
