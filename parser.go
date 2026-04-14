@@ -62,9 +62,14 @@ func (p *Parser) Close() error {
 	return nil
 }
 
-// GetSchemas returns a map of all message schemas found in the log.
+// GetSchemas returns a copy of all message schemas found in the log.
 func (p *Parser) GetSchemas() map[uint8]*Schema {
-	return p.schemas
+	result := make(map[uint8]*Schema, len(p.schemas))
+	for k, v := range p.schemas {
+		schema := *v
+		result[k] = &schema
+	}
+	return result
 }
 
 // ReadMessage reads and parses the next message from the log.
