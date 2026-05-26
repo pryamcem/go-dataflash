@@ -305,8 +305,24 @@ func (p *Parser) buildSchemas() error {
 				targetSchema.Mults = multIds
 				p.schemas[fmtType] = targetSchema
 			}
+		} else if schema, exists := p.schemas[msgType]; exists {
+			// Known non-FMT/FMTU message: skip its body using the schema's
+			// recorded length. Falling back to syncToNextHeader here would
+			// byte-scan for HEAD1/HEAD2 inside the payload, which can match
+			// by coincidence and desync the parser - corrupting later FMT
+			// records (and silently dropping the schemas they define).
+			bodySize := int(schema.Length) - HeaderSize
+			if bodySize < 0 {
+				bodySize = 0
+			}
+			if _, err := p.reader.Discard(bodySize); err != nil {
+				if err == io.EOF || err == io.ErrUnexpectedEOF {
+					break
+				}
+				return err
+			}
 		} else {
-			// Unknown message type - sync to next header
+			// Truly unknown message type (no FMT seen yet) - sync to next header.
 			if err := p.syncToNextHeader(); err != nil {
 				if err == io.EOF || err == io.ErrUnexpectedEOF {
 					break
