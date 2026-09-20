@@ -409,6 +409,10 @@ func (p *Parser) decodeFMTMessage() (*Schema, error) {
 		return nil, err
 	}
 
+	// Build the field layout now so it is read-only once parsing starts,
+	// which keeps Message.Get safe to call from multiple goroutines.
+	schema.ensureLayout()
+
 	return &schema, nil
 }
 

@@ -21,7 +21,8 @@ type Schema struct {
 
 // Message represents a parsed DataFlash message. Field values are decoded
 // lazily: the raw body is retained and fields are decoded on demand via Get,
-// or all at once via Fields.
+// or all at once via Fields. A Message caches decoded fields, so a single
+// Message must not be used from multiple goroutines at once.
 type Message struct {
 	Type   uint8   // Message type ID
 	Name   string  // Message name
@@ -80,15 +81,14 @@ func (m *Message) decodeTimeUS() {
 }
 
 // Fields decodes (once, then caches) and returns all field values as a map.
-// Prefer Get when you only need a few fields.
+// Prefer Get when you only need a few fields. If the body is shorter than the
+// schema requires, the fields that fit are returned and the rest are omitted.
 func (m *Message) Fields() map[string]any {
 	if m.fields != nil {
 		return m.fields
 	}
 	if m.schema != nil && m.body != nil {
-		if f, err := DecodeMessageBody(m.body, m.schema); err == nil {
-			m.fields = f
-		}
+		m.fields, _ = DecodeMessageBody(m.body, m.schema)
 	}
 	if m.fields == nil {
 		m.fields = map[string]any{}
