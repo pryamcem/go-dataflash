@@ -181,7 +181,7 @@ func parseColumns(columns string) []string {
 
 	var result []string
 	var current string
-	
+
 	for _, ch := range columns {
 		if ch == ',' {
 			if current != "" {
@@ -192,11 +192,11 @@ func parseColumns(columns string) []string {
 			current += string(ch)
 		}
 	}
-	
+
 	// Add last field
 	if current != "" {
 		result = append(result, current)
 	}
-	
+
 	return result
 }

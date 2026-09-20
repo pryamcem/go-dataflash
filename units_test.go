@@ -24,14 +24,14 @@ func TestSchemaHasUnitsAndMults(t *testing.T) {
 		if schema.Units != "" || schema.Mults != "" {
 			foundWithUnits = true
 			t.Logf("Schema %s has units=%q, mults=%q", schema.Name, schema.Units, schema.Mults)
-			
+
 			// Units and Mults should match Format length
 			if len(schema.Units) > 0 && len(schema.Units) != len(schema.Format) {
-				t.Errorf("%s: units length (%d) doesn't match format length (%d)", 
+				t.Errorf("%s: units length (%d) doesn't match format length (%d)",
 					schema.Name, len(schema.Units), len(schema.Format))
 			}
 			if len(schema.Mults) > 0 && len(schema.Mults) != len(schema.Format) {
-				t.Errorf("%s: mults length (%d) doesn't match format length (%d)", 
+				t.Errorf("%s: mults length (%d) doesn't match format length (%d)",
 					schema.Name, len(schema.Mults), len(schema.Format))
 			}
 			break

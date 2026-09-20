@@ -39,8 +39,8 @@ func TestDecodeMessageBody_MultipleUnsignedIntegers(t *testing.T) {
 	// H: 1000 (0x03E8) = E8 03 in little-endian
 	// I: 123456 (0x0001E240) = 40 E2 01 00 in little-endian
 	body := []byte{
-		10,                   // B
-		0xE8, 0x03,           // H
+		10,         // B
+		0xE8, 0x03, // H
 		0x40, 0xE2, 0x01, 0x00, // I
 	}
 
@@ -71,8 +71,8 @@ func TestDecodeMessageBody_SignedIntegers(t *testing.T) {
 	// h: -1000 (0xFC18) = 18 FC in little-endian
 	// i: -123456 (0xFFFE1DC0) = C0 1D FE FF in little-endian
 	body := []byte{
-		0xD6,                   // b: -42
-		0x18, 0xFC,             // h: -1000
+		0xD6,       // b: -42
+		0x18, 0xFC, // h: -1000
 		0xC0, 0x1D, 0xFE, 0xFF, // i: -123456
 	}
 
@@ -102,7 +102,7 @@ func TestDecodeMessageBody_ScaledValues(t *testing.T) {
 	// c: 10050 (100.50 * 100) = 0x273A = 3A 27 in little-endian
 	// L: 377487360 (37.7487360 * 1e7) = 0x168378C0 = C0 78 83 16 in little-endian
 	body := []byte{
-		0x3A, 0x27,             // c: altitude scaled
+		0x3A, 0x27, // c: altitude scaled
 		0xC0, 0x78, 0x83, 0x16, // L: latitude
 	}
 
