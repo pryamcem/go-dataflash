@@ -36,6 +36,10 @@ type Message struct {
 
 // Get decodes and returns a single field value by name, without building the
 // full field map. The bool is false if the field is absent or undecodable.
+//
+// Get is meant for reading one or a few fields per message. Each call scans the
+// column list and boxes the value, so to read most or all fields call Fields
+// once instead of calling Get for every column.
 func (m *Message) Get(field string) (any, bool) {
 	if m.schema == nil || m.body == nil {
 		return nil, false
