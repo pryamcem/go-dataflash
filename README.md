@@ -8,6 +8,15 @@ go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It 
 
 ## Version History
 
+### v3.0.0
+- Lazy field decoding: messages keep their raw body and decode fields on demand
+- `Message.Fields` is now a method, `Message.Fields()` (decodes all fields once and caches them)
+- New `Message.Get(field)` to decode a single field without building a map
+- New `Parser.ReadInto(msg)` to reuse a message and its buffer across reads
+- Module path updated to `/v3`
+
+Migrating from v2: replace `msg.Fields["X"]` with `msg.Get("X")` (one field) or `msg.Fields()["X"]` (many fields).
+
 ### v2.0.0
 - Caller now owns the source — `NewParser` accepts `io.ReadSeeker`, `Close` is a no-op
 - `ClearFilter` removed — use `SetFilter()` with no arguments instead
@@ -41,7 +50,7 @@ See [examples/parse_log](https://github.com/pryamcem/go-dataflash/tree/master/ex
 ### Basic Usage
 
 ```go
-import "github.com/pryamcem/go-dataflash/v2"
+import "github.com/pryamcem/go-dataflash/v3"
 
 f, err := os.Open("log.bin")
 if err != nil {
@@ -59,9 +68,48 @@ for {
     if err == io.EOF || err == io.ErrUnexpectedEOF {
         break
     }
-    // Process msg.Name and msg.Fields
+    // Process msg.Name, msg.TimeUS, and fields (see "Reading Fields")
 }
 ```
+
+### Reading Fields
+
+Messages are decoded lazily: `ReadMessage` keeps the raw bytes and only decodes a field when you ask for it.
+
+```go
+// One or a few fields: decodes just that field
+alt, ok := msg.Get("Alt")  // ok is false if the field does not exist
+
+// Many fields: decodes all of them once and caches the result
+for name, value := range msg.Fields() {
+    fmt.Println(name, value)
+}
+```
+
+If you need most of a message's fields, call `Fields()` once instead of calling `Get` for every column. `Get` per column is slower than `Fields()`.
+
+### Reusing Messages
+
+`ReadInto` fills a `Message` you provide and reuses its buffer, so reading does not allocate per message:
+
+```go
+var msg dataflash.Message
+for {
+    err := parser.ReadInto(&msg)
+    if err == io.EOF || err == io.ErrUnexpectedEOF {
+        break
+    }
+    if err != nil {
+        log.Fatal(err)
+    }
+    // msg is only valid until the next ReadInto call
+    if alt, ok := msg.Get("Alt"); ok {
+        altitudes = append(altitudes, alt)  // decoded values are independent copies, safe to keep
+    }
+}
+```
+
+The message data is overwritten on the next call. Copy out anything you need to keep. Use `ReadMessage` if you want messages you can hold on to.
 
 ### Filtering Messages
 
@@ -86,10 +134,9 @@ Fields are automatically scaled based on their format character and FMTU multipl
 ```go
 msg, _ := parser.ReadMessage()
 
-// Fields are already scaled during parsing
-// - Format characters like 'c', 'e', 'L' include built-in scaling
-// - FMTU multipliers are applied for other formats (e.g., 'Q', 'I')
-rawTimeUS := msg.Fields["TimeUS"]  // uint64 value
+// Format characters like 'c', 'e', 'L' include built-in scaling when decoded.
+// FMTU multipliers (e.g., for 'Q', 'I') are applied by GetScaled.
+rawTimeUS, _ := msg.Get("TimeUS")  // uint64 value
 
 // Get scaled value with unit
 sv, _ := msg.GetScaled("TimeUS")  // sv.Value = float64(44.167), sv.Unit = "s"

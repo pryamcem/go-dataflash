@@ -70,3 +70,35 @@ func BenchmarkParseFiltered(b *testing.B) {
 		f.Close()
 	}
 }
+
+// BenchmarkParseReadInto parses every message through the reusable ReadInto
+// path, which shares one Message and its body buffer across the whole file.
+func BenchmarkParseReadInto(b *testing.B) {
+	if benchmarkFile == "" {
+		b.Skip("set DATAFLASH_BENCH_FILE to run benchmarks")
+	}
+	for b.Loop() {
+		f, err := os.Open(benchmarkFile)
+		if err != nil {
+			b.Fatalf("failed to open file: %v", err)
+		}
+		parser, err := NewParser(f)
+		if err != nil {
+			f.Close()
+			b.Fatalf("failed to create parser: %v", err)
+		}
+
+		var msg Message
+		for {
+			err := parser.ReadInto(&msg)
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				break
+			}
+			if err != nil {
+				f.Close()
+				b.Fatalf("error reading message: %v", err)
+			}
+		}
+		f.Close()
+	}
+}

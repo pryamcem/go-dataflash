@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/pryamcem/go-dataflash/v2"
+	"github.com/pryamcem/go-dataflash/v3"
 )
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 
 	// Filter to only get GPS messages
 	log.Println("Set filters")
-	if err := parser.SetFilter("GPS", "IMU", "POS"); err != nil {
+	if err := parser.SetFilter("LOGM"); err != nil {
 		log.Fatalf("Error setting filter: %v", err)
 	}
 
@@ -45,6 +45,8 @@ func main() {
 			log.Fatalf("Error reading message: %v", err)
 		}
 		messageCount[msg.Name]++
+		mode, _ := msg.Get("Mode")
+		fmt.Println(msg.TimeUS, mode)
 	}
 	for name, count := range messageCount {
 		fmt.Println(name, count)

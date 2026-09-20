@@ -24,14 +24,14 @@ func TestSchemaHasUnitsAndMults(t *testing.T) {
 		if schema.Units != "" || schema.Mults != "" {
 			foundWithUnits = true
 			t.Logf("Schema %s has units=%q, mults=%q", schema.Name, schema.Units, schema.Mults)
-			
+
 			// Units and Mults should match Format length
 			if len(schema.Units) > 0 && len(schema.Units) != len(schema.Format) {
-				t.Errorf("%s: units length (%d) doesn't match format length (%d)", 
+				t.Errorf("%s: units length (%d) doesn't match format length (%d)",
 					schema.Name, len(schema.Units), len(schema.Format))
 			}
 			if len(schema.Mults) > 0 && len(schema.Mults) != len(schema.Format) {
-				t.Errorf("%s: mults length (%d) doesn't match format length (%d)", 
+				t.Errorf("%s: mults length (%d) doesn't match format length (%d)",
 					schema.Name, len(schema.Mults), len(schema.Format))
 			}
 			break
@@ -86,7 +86,7 @@ func TestGetScaled(t *testing.T) {
 		t.Errorf("scaled TimeUS seems wrong: %f %s", floatVal, sv.Unit)
 	}
 
-	t.Logf("TimeUS: raw=%v, scaled=%v %s", msg.Fields["TimeUS"], sv.Value, sv.Unit)
+	t.Logf("TimeUS: raw=%v, scaled=%v %s", msg.Fields()["TimeUS"], sv.Value, sv.Unit)
 }
 
 func TestGetScaledFields(t *testing.T) {
@@ -118,7 +118,7 @@ func TestGetScaledFields(t *testing.T) {
 
 	// Count numeric fields in original message
 	numericFields := 0
-	for _, v := range msg.Fields {
+	for _, v := range msg.Fields() {
 		if _, err := toFloat64(v); err == nil {
 			numericFields++
 		}
