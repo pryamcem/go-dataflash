@@ -129,6 +129,11 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 
 		// Check filter before reading body
 		bodySize := int(schema.Length) - HeaderSize
+		if bodySize < 0 {
+			// Corrupt FMT declared a length shorter than the header; treat
+			// the message as header-only (same as buildSchemas does).
+			bodySize = 0
+		}
 		if p.filterTypes != nil && !p.filterTypes[msgType] {
 			p.reader.Discard(bodySize)
 			continue

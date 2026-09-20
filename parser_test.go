@@ -2,6 +2,7 @@ package dataflash
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -340,5 +341,43 @@ func TestGetSlice(t *testing.T) {
 		if msg.TimeUS < start || msg.TimeUS >= end {
 			t.Errorf("message TimeUS %d outside range [%d, %d)", msg.TimeUS, start, end)
 		}
+	}
+}
+
+// A corrupt FMT can declare a message length shorter than the 3-byte header.
+// Reading a message of that type must not panic on a negative body size.
+func TestReadSchemaLengthBelowHeader(t *testing.T) {
+	const badType = 200
+
+	for _, length := range []uint8{0, 1, HeaderSize - 1} {
+		var log []byte
+		log = append(log, fmtRecord(FMTType, FMTLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")...)
+		log = append(log, fmtRecord(badType, length, "BAD", "", "")...)
+		log = append(log, HEAD1, HEAD2, badType, HEAD1, HEAD2, badType)
+
+		readAll := func(t *testing.T, read func(p *Parser) error) {
+			t.Helper()
+			p, err := NewParser(bytes.NewReader(log))
+			if err != nil {
+				t.Fatalf("NewParser: %v", err)
+			}
+			for {
+				err := read(p)
+				if err == io.EOF || err == io.ErrUnexpectedEOF {
+					return
+				}
+				if err != nil {
+					t.Fatalf("read: %v", err)
+				}
+			}
+		}
+
+		t.Run(fmt.Sprintf("ReadMessage/length=%d", length), func(t *testing.T) {
+			readAll(t, func(p *Parser) error { _, err := p.ReadMessage(); return err })
+		})
+		t.Run(fmt.Sprintf("ReadInto/length=%d", length), func(t *testing.T) {
+			var msg Message
+			readAll(t, func(p *Parser) error { return p.ReadInto(&msg) })
+		})
 	}
 }
