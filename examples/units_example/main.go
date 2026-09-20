@@ -41,7 +41,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		log.Println(msg.Fields)
+		log.Println(msg.Fields())
 
 		scaled := msg.GetScaledFields()
 		fmt.Println(scaled)

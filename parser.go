@@ -73,18 +73,39 @@ func (p *Parser) GetSchemas() map[uint8]*Schema {
 }
 
 // ReadMessage reads and parses the next message from the log.
+// The returned *Message owns its body buffer and is safe to retain.
 // Returns io.EOF when there are no more messages.
 func (p *Parser) ReadMessage() (*Message, error) {
+	msg := &Message{}
+	if err := p.readMessage(msg, false); err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+// ReadInto reads the next message into the caller-provided msg, reusing its
+// body buffer to avoid a per-message allocation. The message data is only valid
+// until the next ReadInto call on the same msg, so copy out anything you need to
+// retain (decoded field values from Get are independent and safe to keep).
+// Returns io.EOF when there are no more messages.
+func (p *Parser) ReadInto(msg *Message) error {
+	return p.readMessage(msg, true)
+}
+
+// readMessage fills msg with the next decodable message. When reuseBody is true
+// the body is read straight into msg's existing buffer (grown as needed);
+// otherwise a fresh buffer is allocated so the message can outlive later reads.
+func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 	for {
 		msgType, err := p.readMessageHeader()
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			return nil, err
+			return err
 		}
 		if err != nil {
 			// Invalid header - try to sync to next valid header
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
 				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
-					return nil, syncErr
+					return syncErr
 				}
 				// Continue trying to read next message
 			}
@@ -97,7 +118,7 @@ func (p *Parser) ReadMessage() (*Message, error) {
 			// Unknown message type - sync to next header
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
 				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
-					return nil, syncErr
+					return syncErr
 				}
 			}
 			continue
@@ -107,44 +128,38 @@ func (p *Parser) ReadMessage() (*Message, error) {
 		p.lineNo++
 
 		// Check filter before reading body
+		bodySize := int(schema.Length) - HeaderSize
 		if p.filterTypes != nil && !p.filterTypes[msgType] {
-			bodySize := int(schema.Length) - HeaderSize
 			p.reader.Discard(bodySize)
 			continue
 		}
 
-		// Read message body using pre-allocated buffer
-		bodySize := int(schema.Length) - HeaderSize
-		body := p.bodyBuf[:bodySize]
-		if _, err := io.ReadFull(p.reader, body); err != nil {
-			return nil, err
-		}
-
-		// Decode message body
-		fields, err := DecodeMessageBody(body, schema)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode message: %w", err)
-		}
-
-		// Extract TimeUS if available
-		timeUS := int64(0)
-		if val, ok := fields["TimeUS"]; ok {
-			switch v := val.(type) {
-			case int64:
-				timeUS = v
-			case uint64:
-				timeUS = int64(v)
+		// Reset cached decode state, then read the body.
+		msg.fields = nil
+		msg.TimeUS = 0
+		if reuseBody {
+			if cap(msg.body) < bodySize {
+				msg.body = make([]byte, bodySize)
+			} else {
+				msg.body = msg.body[:bodySize]
 			}
+			if _, err := io.ReadFull(p.reader, msg.body); err != nil {
+				return err
+			}
+		} else {
+			if _, err := io.ReadFull(p.reader, p.bodyBuf[:bodySize]); err != nil {
+				return err
+			}
+			msg.body = make([]byte, bodySize)
+			copy(msg.body, p.bodyBuf[:bodySize])
 		}
 
-		return &Message{
-			Type:   msgType,
-			Name:   schema.Name,
-			Fields: fields,
-			LineNo: p.lineNo,
-			TimeUS: timeUS,
-			schema: schema,
-		}, nil
+		msg.Type = msgType
+		msg.Name = schema.Name
+		msg.LineNo = p.lineNo
+		msg.schema = schema
+		msg.decodeTimeUS()
+		return nil
 	}
 }
 

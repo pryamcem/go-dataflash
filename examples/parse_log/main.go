@@ -47,7 +47,7 @@ func main() {
 
 		fmt.Printf("%s #%d: ", msg.Name, count+1)
 		// Print first few fields
-		for k, v := range msg.Fields {
+		for k, v := range msg.Fields() {
 			fmt.Printf("%s=%v ", k, v)
 		}
 		fmt.Println()

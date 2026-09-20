@@ -15,7 +15,7 @@ func (m *Message) GetScaled(field string) (ScaledValue, error) {
 	}
 
 	// Get value from fields
-	value, exists := m.Fields[field]
+	value, exists := m.Get(field)
 	if !exists {
 		return ScaledValue{}, fmt.Errorf("field %q not found in message", field)
 	}
@@ -82,7 +82,7 @@ func (m *Message) GetScaledFields() map[string]ScaledValue {
 	columns := parseColumns(m.schema.Columns)
 	for i, col := range columns {
 		// Get value
-		value, exists := m.Fields[col]
+		value, exists := m.Get(col)
 		if !exists {
 			continue
 		}

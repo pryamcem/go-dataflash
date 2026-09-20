@@ -279,7 +279,7 @@ func TestMessageTracking(t *testing.T) {
 	}
 
 	// Verify TimeUS matches Fields
-	if timeUSField, ok := msg.Fields["TimeUS"]; ok {
+	if timeUSField, ok := msg.Fields()["TimeUS"]; ok {
 		var fieldTimeUS int64
 		switch v := timeUSField.(type) {
 		case int64:

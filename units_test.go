@@ -86,7 +86,7 @@ func TestGetScaled(t *testing.T) {
 		t.Errorf("scaled TimeUS seems wrong: %f %s", floatVal, sv.Unit)
 	}
 
-	t.Logf("TimeUS: raw=%v, scaled=%v %s", msg.Fields["TimeUS"], sv.Value, sv.Unit)
+	t.Logf("TimeUS: raw=%v, scaled=%v %s", msg.Fields()["TimeUS"], sv.Value, sv.Unit)
 }
 
 func TestGetScaledFields(t *testing.T) {
@@ -118,7 +118,7 @@ func TestGetScaledFields(t *testing.T) {
 
 	// Count numeric fields in original message
 	numericFields := 0
-	for _, v := range msg.Fields {
+	for _, v := range msg.Fields() {
 		if _, err := toFloat64(v); err == nil {
 			numericFields++
 		}

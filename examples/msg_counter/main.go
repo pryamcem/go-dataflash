@@ -30,7 +30,7 @@ func main() {
 
 	// Filter to only get GPS messages
 	log.Println("Set filters")
-	if err := parser.SetFilter("GPS", "IMU", "POS"); err != nil {
+	if err := parser.SetFilter("LOGM"); err != nil {
 		log.Fatalf("Error setting filter: %v", err)
 	}
 
@@ -45,6 +45,7 @@ func main() {
 			log.Fatalf("Error reading message: %v", err)
 		}
 		messageCount[msg.Name]++
+		fmt.Println(msg.TimeUS, msg.Fields["Mode"])
 	}
 	for name, count := range messageCount {
 		fmt.Println(name, count)
