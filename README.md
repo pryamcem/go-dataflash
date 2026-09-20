@@ -59,9 +59,48 @@ for {
     if err == io.EOF || err == io.ErrUnexpectedEOF {
         break
     }
-    // Process msg.Name and msg.Fields
+    // Process msg.Name, msg.TimeUS, and fields (see "Reading Fields")
 }
 ```
+
+### Reading Fields
+
+Messages are decoded lazily: `ReadMessage` keeps the raw bytes and only decodes a field when you ask for it.
+
+```go
+// One or a few fields: decodes just that field
+alt, ok := msg.Get("Alt")  // ok is false if the field does not exist
+
+// Many fields: decodes all of them once and caches the result
+for name, value := range msg.Fields() {
+    fmt.Println(name, value)
+}
+```
+
+If you need most of a message's fields, call `Fields()` once instead of calling `Get` for every column. `Get` per column is slower than `Fields()`.
+
+### Reusing Messages
+
+`ReadInto` fills a `Message` you provide and reuses its buffer, so reading does not allocate per message:
+
+```go
+var msg dataflash.Message
+for {
+    err := parser.ReadInto(&msg)
+    if err == io.EOF || err == io.ErrUnexpectedEOF {
+        break
+    }
+    if err != nil {
+        log.Fatal(err)
+    }
+    // msg is only valid until the next ReadInto call
+    if alt, ok := msg.Get("Alt"); ok {
+        altitudes = append(altitudes, alt)  // decoded values are independent copies, safe to keep
+    }
+}
+```
+
+The message data is overwritten on the next call. Copy out anything you need to keep. Use `ReadMessage` if you want messages you can hold on to.
 
 ### Filtering Messages
 
@@ -86,10 +125,9 @@ Fields are automatically scaled based on their format character and FMTU multipl
 ```go
 msg, _ := parser.ReadMessage()
 
-// Fields are already scaled during parsing
-// - Format characters like 'c', 'e', 'L' include built-in scaling
-// - FMTU multipliers are applied for other formats (e.g., 'Q', 'I')
-rawTimeUS := msg.Fields["TimeUS"]  // uint64 value
+// Format characters like 'c', 'e', 'L' include built-in scaling when decoded.
+// FMTU multipliers (e.g., for 'Q', 'I') are applied by GetScaled.
+rawTimeUS, _ := msg.Get("TimeUS")  // uint64 value
 
 // Get scaled value with unit
 sv, _ := msg.GetScaled("TimeUS")  // sv.Value = float64(44.167), sv.Unit = "s"
