@@ -45,7 +45,8 @@ func main() {
 			log.Fatalf("Error reading message: %v", err)
 		}
 		messageCount[msg.Name]++
-		fmt.Println(msg.TimeUS, msg.Fields["Mode"])
+		mode, _ := msg.Get("Mode")
+		fmt.Println(msg.TimeUS, mode)
 	}
 	for name, count := range messageCount {
 		fmt.Println(name, count)
