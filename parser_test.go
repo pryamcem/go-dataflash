@@ -381,3 +381,92 @@ func TestReadSchemaLengthBelowHeader(t *testing.T) {
 		})
 	}
 }
+
+// countRemaining reads to the end of the log and returns the number of
+// messages, checking each one against the optional wantName.
+func countRemaining(t *testing.T, p *Parser, wantName string) int {
+	t.Helper()
+	n := 0
+	for {
+		msg, err := p.ReadMessage()
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			return n
+		}
+		if err != nil {
+			t.Fatalf("ReadMessage: %v", err)
+		}
+		if wantName != "" && msg.Name != wantName {
+			t.Fatalf("got %s message, want only %s", msg.Name, wantName)
+		}
+		n++
+	}
+}
+
+// A failed SetFilter must leave the parser exactly as it was.
+func TestSetFilterFailureLeavesParserUnchanged(t *testing.T) {
+	total := countRemaining(t, openTestParser(t), "")
+
+	gps := openTestParser(t)
+	if err := gps.SetFilter("GPS"); err != nil {
+		t.Fatalf("SetFilter(GPS): %v", err)
+	}
+	gpsTotal := countRemaining(t, gps, "GPS")
+
+	t.Run("all names invalid", func(t *testing.T) {
+		p := openTestParser(t)
+		if err := p.SetFilter("NOPE"); err == nil {
+			t.Fatal("expected an error")
+		}
+		if got := countRemaining(t, p, ""); got != total {
+			t.Errorf("read %d messages after failed SetFilter, want all %d", got, total)
+		}
+	})
+
+	t.Run("some names invalid", func(t *testing.T) {
+		p := openTestParser(t)
+		if err := p.SetFilter("GPS", "NOPE"); err == nil {
+			t.Fatal("expected an error")
+		}
+		if got := countRemaining(t, p, ""); got != total {
+			t.Errorf("read %d messages after failed SetFilter, want all %d", got, total)
+		}
+	})
+
+	t.Run("keeps the previous filter", func(t *testing.T) {
+		p := openTestParser(t)
+		if err := p.SetFilter("GPS"); err != nil {
+			t.Fatalf("SetFilter(GPS): %v", err)
+		}
+		if err := p.SetFilter("IMU", "NOPE"); err == nil {
+			t.Fatal("expected an error")
+		}
+		if got := countRemaining(t, p, "GPS"); got != gpsTotal {
+			t.Errorf("read %d GPS messages after failed SetFilter, want %d", got, gpsTotal)
+		}
+	})
+}
+
+// A name shared by several message types must select all of them, not one
+// picked by map iteration order.
+func TestSetFilterNameWithMultipleTypes(t *testing.T) {
+	var log []byte
+	log = append(log, fmtRecord(FMTType, FMTLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")...)
+	log = append(log, fmtRecord(10, 4, "DUP", "B", "V")...)
+	log = append(log, fmtRecord(11, 4, "DUP", "B", "V")...)
+	for _, typ := range []byte{10, 11, 10, 11} {
+		log = append(log, HEAD1, HEAD2, typ, 1)
+	}
+
+	for i := 0; i < 20; i++ {
+		p, err := NewParser(bytes.NewReader(log))
+		if err != nil {
+			t.Fatalf("NewParser: %v", err)
+		}
+		if err := p.SetFilter("DUP"); err != nil {
+			t.Fatalf("SetFilter(DUP): %v", err)
+		}
+		if got := countRemaining(t, p, "DUP"); got != 4 {
+			t.Fatalf("run %d: read %d DUP messages, want 4 (both types)", i, got)
+		}
+	}
+}
