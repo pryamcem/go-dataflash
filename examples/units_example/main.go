@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/pryamcem/go-dataflash/v2"
+	"github.com/pryamcem/go-dataflash/v3"
 )
 
 func main() {

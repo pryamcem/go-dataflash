@@ -8,6 +8,15 @@ go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It 
 
 ## Version History
 
+### v3.0.0
+- Lazy field decoding: messages keep their raw body and decode fields on demand
+- `Message.Fields` is now a method, `Message.Fields()` (decodes all fields once and caches them)
+- New `Message.Get(field)` to decode a single field without building a map
+- New `Parser.ReadInto(msg)` to reuse a message and its buffer across reads
+- Module path updated to `/v3`
+
+Migrating from v2: replace `msg.Fields["X"]` with `msg.Get("X")` (one field) or `msg.Fields()["X"]` (many fields).
+
 ### v2.0.0
 - Caller now owns the source — `NewParser` accepts `io.ReadSeeker`, `Close` is a no-op
 - `ClearFilter` removed — use `SetFilter()` with no arguments instead
@@ -41,7 +50,7 @@ See [examples/parse_log](https://github.com/pryamcem/go-dataflash/tree/master/ex
 ### Basic Usage
 
 ```go
-import "github.com/pryamcem/go-dataflash/v2"
+import "github.com/pryamcem/go-dataflash/v3"
 
 f, err := os.Open("log.bin")
 if err != nil {
