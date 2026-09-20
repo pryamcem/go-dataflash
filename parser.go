@@ -171,23 +171,26 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 // SetFilter restricts parsing to the given message names.
 // Automatically rewinds so all messages are available from the start.
 // Passing no names clears the filter and all message types are returned.
-// Returns an error if any name does not match a message type in the log.
+// Returns an error if any name does not match a message type in the log; in
+// that case the previous filter is left unchanged.
 func (p *Parser) SetFilter(names ...string) error {
 	if len(names) == 0 {
 		p.filterTypes = nil
 		return p.rewind()
 	}
 
-	p.filterTypes = make(map[uint8]bool)
+	// Build the filter separately and apply it only if every name is valid, so
+	// a failed call leaves the current filter and read position untouched.
+	filter := make(map[uint8]bool)
 	var invalidNames []string
 
 	for _, name := range names {
 		found := false
+		// A name can be defined by more than one message type; select them all.
 		for typ, schema := range p.schemas {
 			if schema.Name == name {
-				p.filterTypes[typ] = true
+				filter[typ] = true
 				found = true
-				break
 			}
 		}
 		if !found {
@@ -195,13 +198,15 @@ func (p *Parser) SetFilter(names ...string) error {
 		}
 	}
 
-	if len(p.filterTypes) == 0 {
+	if len(filter) == 0 {
 		return fmt.Errorf("no valid message types found in filter: %v", names)
 	}
 
 	if len(invalidNames) > 0 {
 		return fmt.Errorf("invalid message types in filter: %v", invalidNames)
 	}
+
+	p.filterTypes = filter
 
 	// Rewind to start so filter applies from beginning
 	return p.rewind()
