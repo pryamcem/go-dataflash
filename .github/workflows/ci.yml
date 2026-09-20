@@ -7,15 +7,24 @@ on:
 
 jobs:
   test:
+    name: test (go ${{ matrix.go }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest supported version (keep in sync with the go directive in go.mod)
+        # and the latest release.
+        go: ["1.24", "stable"]
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go }}
 
+      # gofmt output can differ between Go versions, so check it once.
       - name: gofmt
+        if: matrix.go == 'stable'
         run: |
           unformatted=$(gofmt -l .)
           if [ -n "$unformatted" ]; then
