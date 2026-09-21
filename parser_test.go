@@ -42,7 +42,6 @@ func TestNewParser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create parser from source: %v", err)
 	}
-	defer parser.Close()
 
 	// Verify we can read a message
 	msg, err := parser.ReadMessage()
@@ -64,7 +63,6 @@ func TestRewindNonFileSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
-	defer parser.Close()
 
 	// SetFilter should rewind and return only GPS messages
 	if err := parser.SetFilter("GPS"); err != nil {
@@ -93,23 +91,6 @@ func TestRewindNonFileSource(t *testing.T) {
 		if m.LineNo < 1 || m.LineNo >= 5 {
 			t.Errorf("message LineNo %d outside range [1, 5)", m.LineNo)
 		}
-	}
-}
-
-func TestCloseNonCloserSource(t *testing.T) {
-	data, err := os.ReadFile(testFile)
-	if err != nil {
-		t.Fatalf("failed to read test file: %v", err)
-	}
-
-	// bytes.Reader does not implement io.Closer
-	parser, err := NewParser(bytes.NewReader(data))
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
-
-	if err := parser.Close(); err != nil {
-		t.Errorf("expected nil error closing non-closer source, got: %v", err)
 	}
 }
 
