@@ -36,7 +36,7 @@ func TestStats(t *testing.T) {
 			readAll := func() {
 				for {
 					_, err := p.ReadMessage()
-					if err == io.EOF || err == io.ErrUnexpectedEOF {
+					if err == io.EOF {
 						return
 					}
 					if err != nil {

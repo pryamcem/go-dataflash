@@ -50,7 +50,7 @@ func TestLazyMatchesEagerDecode(t *testing.T) {
 	messages := 0
 	for {
 		msg, err := p.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
@@ -95,7 +95,7 @@ func TestReadIntoMatchesReadMessage(t *testing.T) {
 		if wantErr != gotErr {
 			t.Fatalf("message %d: error mismatch: ReadMessage=%v ReadInto=%v", n, wantErr, gotErr)
 		}
-		if wantErr == io.EOF || wantErr == io.ErrUnexpectedEOF {
+		if wantErr == io.EOF {
 			return
 		}
 		if wantErr != nil {

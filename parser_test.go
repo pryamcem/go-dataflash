@@ -118,7 +118,7 @@ func TestParserFilter(t *testing.T) {
 	// Read 10 messages
 	for range 10 {
 		msg, err := parser.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
@@ -156,7 +156,7 @@ func TestClearFilter(t *testing.T) {
 	// Should now receive non-GPS messages too
 	for range 20 {
 		msg, err := parser.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
@@ -363,7 +363,7 @@ func TestReadSchemaLengthBelowHeader(t *testing.T) {
 			}
 			for {
 				err := read(p)
-				if err == io.EOF || err == io.ErrUnexpectedEOF {
+				if err == io.EOF {
 					return
 				}
 				if err != nil {
@@ -389,7 +389,7 @@ func countRemaining(t *testing.T, p *Parser, wantName string) int {
 	n := 0
 	for {
 		msg, err := p.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			return n
 		}
 		if err != nil {

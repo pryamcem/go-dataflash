@@ -65,12 +65,14 @@ if err != nil {
 
 for {
     msg, err := parser.ReadMessage()
-    if err == io.EOF || err == io.ErrUnexpectedEOF {
+    if err == io.EOF {
         break
     }
     // Process msg.Name, msg.TimeUS, and fields (see "Reading Fields")
 }
 ```
+
+The loop ends with `io.EOF`. A log cut off in the middle of a message (common after a crash) also ends with `io.EOF`; check `parser.Stats().Truncated` if you need to know.
 
 ### Reading Fields
 
@@ -96,7 +98,7 @@ If you need most of a message's fields, call `Fields()` once instead of calling 
 var msg dataflash.Message
 for {
     err := parser.ReadInto(&msg)
-    if err == io.EOF || err == io.ErrUnexpectedEOF {
+    if err == io.EOF {
         break
     }
     if err != nil {
@@ -118,7 +120,7 @@ parser.SetFilter("GPS", "IMU")  // Only parse GPS and IMU messages
 
 for {
     msg, err := parser.ReadMessage()
-    if err == io.EOF || err == io.ErrUnexpectedEOF {
+    if err == io.EOF {
         break
     }
     // msg.Name will be either "GPS" or "IMU"

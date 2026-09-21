@@ -38,7 +38,7 @@ func main() {
 	count := 0
 	for {
 		msg, err := parser.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
