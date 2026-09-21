@@ -106,16 +106,15 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 			return err
 		}
 		if err != nil {
-			// Invalid header - try to sync to next valid header
-			if errors.Is(err, errInvalidHeader) {
-				p.stats.InvalidHeaders++
-				p.stats.SkippedBytes += HeaderSize
+			if !errors.Is(err, errInvalidHeader) {
+				// Read error from the source - retrying would loop forever
+				return err
 			}
+			// Invalid header - try to sync to next valid header
+			p.stats.InvalidHeaders++
+			p.stats.SkippedBytes += HeaderSize
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
-				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
-					return syncErr
-				}
-				// Continue trying to read next message
+				return syncErr
 			}
 			continue
 		}
@@ -127,9 +126,7 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 			p.stats.UnknownTypes++
 			p.stats.SkippedBytes += HeaderSize
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
-				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
-					return syncErr
-				}
+				return syncErr
 			}
 			continue
 		}
@@ -302,9 +299,20 @@ func (p *Parser) buildSchemas() error {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
-		if err != nil {
-			// Skip invalid headers
+		if errors.Is(err, errInvalidHeader) {
+			// Corrupt header - resync to the next one rather than stepping
+			// through the data 3 bytes at a time, which can stay misaligned
+			// and miss later FMT records.
+			if syncErr := p.syncToNextHeader(); syncErr != nil {
+				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
+					break
+				}
+				return syncErr
+			}
 			continue
+		}
+		if err != nil {
+			return err
 		}
 
 		if msgType == FMTType {
