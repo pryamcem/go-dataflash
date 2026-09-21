@@ -3,9 +3,12 @@ package dataflash
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 )
+
+var errInvalidHeader = errors.New("invalid header")
 
 const (
 	readBufferSize = 64 * 1024
@@ -28,6 +31,7 @@ type Parser struct {
 	schemas     map[uint8]*Schema
 	filterTypes map[uint8]bool
 	lineNo      int64 // Current message sequence number
+	stats       Stats // Damage found in the current pass over the log
 
 	// Pre-allocated buffers
 	headerBuf [HeaderSize]byte
@@ -103,6 +107,10 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 		}
 		if err != nil {
 			// Invalid header - try to sync to next valid header
+			if errors.Is(err, errInvalidHeader) {
+				p.stats.InvalidHeaders++
+				p.stats.SkippedBytes += HeaderSize
+			}
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
 				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
 					return syncErr
@@ -116,6 +124,8 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 		schema, ok := p.schemas[msgType]
 		if !ok {
 			// Unknown message type - sync to next header
+			p.stats.UnknownTypes++
+			p.stats.SkippedBytes += HeaderSize
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
 				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
 					return syncErr
@@ -212,6 +222,13 @@ func (p *Parser) SetFilter(names ...string) error {
 	return p.rewind()
 }
 
+// Stats returns how much of the log the parser has had to skip since the last
+// NewParser, Rewind or SetFilter call. Use it after reading to tell whether a
+// log is damaged.
+func (p *Parser) Stats() Stats {
+	return p.stats
+}
+
 // Rewind resets the source position to the beginning.
 // Useful for re-reading messages or starting a new iteration.
 func (p *Parser) Rewind() error {
@@ -221,6 +238,7 @@ func (p *Parser) Rewind() error {
 // rewind is the internal helper that resets file position and buffered reader.
 func (p *Parser) rewind() error {
 	p.lineNo = 0
+	p.stats = Stats{}
 	if _, err := p.source.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -363,6 +381,7 @@ func (p *Parser) buildSchemas() error {
 // This is used when we encounter unknown message types during schema building.
 // Uses Peek and Discard to avoid UnreadByte issues with buffered I/O.
 func (p *Parser) syncToNextHeader() error {
+	p.stats.Resyncs++
 	for {
 		// Peek at the next 2 bytes to check for header pattern
 		peeked, err := p.reader.Peek(2)
@@ -377,6 +396,7 @@ func (p *Parser) syncToNextHeader() error {
 
 		// Not a header, skip one byte and try again
 		p.reader.Discard(1)
+		p.stats.SkippedBytes++
 	}
 }
 
@@ -388,7 +408,7 @@ func (p *Parser) readMessageHeader() (uint8, error) {
 	}
 
 	if p.headerBuf[0] != HEAD1 || p.headerBuf[1] != HEAD2 {
-		return 0, fmt.Errorf("invalid header")
+		return 0, errInvalidHeader
 	}
 
 	return p.headerBuf[2], nil
