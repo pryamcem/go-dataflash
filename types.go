@@ -92,7 +92,7 @@ func (m *Message) Fields() map[string]any {
 		return m.fields
 	}
 	if m.schema != nil && m.body != nil {
-		m.fields, _ = DecodeMessageBody(m.body, m.schema)
+		m.fields, _ = decodeMessageBody(m.body, m.schema)
 	}
 	if m.fields == nil {
 		m.fields = map[string]any{}

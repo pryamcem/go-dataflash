@@ -100,13 +100,13 @@ func (s *Schema) ensureLayout() {
 	s.colFormats = formats
 }
 
-// DecodeMessageBody decodes a message body according to the provided schema.
+// decodeMessageBody decodes a message body according to the provided schema.
 // Returns a map of field names to their decoded values.
 //
 // If body is too short for the schema, decoding stops at the first field that
 // does not fit: the fields decoded so far are returned together with a non-nil
 // error, so callers can choose to use the partial result.
-func DecodeMessageBody(body []byte, schema *Schema) (map[string]any, error) {
+func decodeMessageBody(body []byte, schema *Schema) (map[string]any, error) {
 	data := make(map[string]any)
 	columns := strings.Split(schema.Columns, ",")
 

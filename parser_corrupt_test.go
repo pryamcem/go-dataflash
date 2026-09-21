@@ -9,9 +9,9 @@ import (
 )
 
 // fmtRecord builds a FMT (type 128) record defining a schema.
-// Layout: HEAD1, HEAD2, 128, Type, Length, Name[4], Format[16], Columns[64].
+// Layout: head1, head2, 128, Type, Length, Name[4], Format[16], Columns[64].
 func fmtRecord(defType, length uint8, name, format, columns string) []byte {
-	rec := []byte{HEAD1, HEAD2, FMTType, defType, length}
+	rec := []byte{head1, head2, fmtMsgType, defType, length}
 	for _, f := range []struct {
 		s string
 		n int
@@ -23,7 +23,7 @@ func fmtRecord(defType, length uint8, name, format, columns string) []byte {
 	return rec
 }
 
-// Regression: a known non-FMT body containing HEAD1/HEAD2 magic must not desync
+// Regression: a known non-FMT body containing head1/head2 magic must not desync
 // buildSchemas and drop the FMT records that follow it.
 func TestBuildSchemasMagicInBody(t *testing.T) {
 	const (
@@ -34,14 +34,14 @@ func TestBuildSchemasMagicInBody(t *testing.T) {
 	// FOO body opens with magic + the FMT type byte (0x80): a byte-scan
 	// re-aligns here and eats the BARO definition that follows.
 	fooBody := make([]byte, 20)
-	fooBody[0] = HEAD1
-	fooBody[1] = HEAD2
-	fooBody[2] = FMTType
-	fooLen := uint8(HeaderSize + len(fooBody))
+	fooBody[0] = head1
+	fooBody[1] = head2
+	fooBody[2] = fmtMsgType
+	fooLen := uint8(headerSize + len(fooBody))
 
 	var log []byte
 	log = append(log, fmtRecord(fooType, fooLen, "FOO", "f", "Val")...)
-	log = append(log, HEAD1, HEAD2, fooType)
+	log = append(log, head1, head2, fooType)
 	log = append(log, fooBody...)
 	log = append(log, fmtRecord(baroType, 11, "BARO", "If", "TimeUS,Alt")...)
 
@@ -98,9 +98,9 @@ func returnsWithin(t *testing.T, f func() error) error {
 }
 
 func robustnessLog(tail ...byte) []byte {
-	log := fmtRecord(FMTType, FMTLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")
+	log := fmtRecord(fmtMsgType, fmtMsgLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")
 	log = append(log, fmtRecord(10, 4, "AAAA", "B", "V")...)
-	log = append(log, HEAD1, HEAD2, 10, 1)
+	log = append(log, head1, head2, 10, 1)
 	return append(log, tail...)
 }
 
@@ -155,7 +155,7 @@ func TestNewParserReturnsSourceError(t *testing.T) {
 
 // Junk in front of a FMT record must not make schema building miss it.
 func TestBuildSchemasResyncsAfterJunk(t *testing.T) {
-	log := fmtRecord(FMTType, FMTLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")
+	log := fmtRecord(fmtMsgType, fmtMsgLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")
 	log = append(log, 1, 2, 3, 4, 5) // 5 bytes: not a multiple of the 3-byte header
 	log = append(log, fmtRecord(10, 4, "AAAA", "B", "V")...)
 
@@ -169,7 +169,7 @@ func TestBuildSchemasResyncsAfterJunk(t *testing.T) {
 }
 
 func TestStats(t *testing.T) {
-	good := []byte{HEAD1, HEAD2, 10, 1}
+	good := []byte{head1, head2, 10, 1}
 
 	tests := []struct {
 		name string
@@ -180,12 +180,12 @@ func TestStats(t *testing.T) {
 		// 3-byte bad header, then 2 more bytes skipped looking for the next header
 		{"junk bytes", []byte{1, 2, 3, 4, 5}, Stats{SkippedBytes: 5, Resyncs: 1, InvalidHeaders: 1}},
 		// unknown type 99: its 3-byte header, then 2 junk bytes
-		{"unknown type", []byte{HEAD1, HEAD2, 99, 1, 2}, Stats{SkippedBytes: 5, Resyncs: 1, UnknownTypes: 1}},
+		{"unknown type", []byte{head1, head2, 99, 1, 2}, Stats{SkippedBytes: 5, Resyncs: 1, UnknownTypes: 1}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			log := fmtRecord(FMTType, FMTLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")
+			log := fmtRecord(fmtMsgType, fmtMsgLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")
 			log = append(log, fmtRecord(10, 4, "AAAA", "B", "V")...)
 			log = append(log, good...)
 			log = append(log, tc.junk...)
@@ -237,9 +237,9 @@ func TestReadEndsWithEOF(t *testing.T) {
 		truncated bool
 	}{
 		{"clean end", nil, "", false},
-		{"cut inside header", []byte{HEAD1, HEAD2}, "", true},
-		{"cut inside body", []byte{HEAD1, HEAD2, 11, 1, 2}, "", true},
-		{"cut inside a filtered-out body", []byte{HEAD1, HEAD2, 10, 1}, "CCCC", true},
+		{"cut inside header", []byte{head1, head2}, "", true},
+		{"cut inside body", []byte{head1, head2, 11, 1, 2}, "", true},
+		{"cut inside a filtered-out body", []byte{head1, head2, 10, 1}, "CCCC", true},
 	}
 	readers := map[string]func(p *Parser) error{
 		"ReadMessage": func(p *Parser) error { _, err := p.ReadMessage(); return err },
@@ -250,10 +250,10 @@ func TestReadEndsWithEOF(t *testing.T) {
 		for name, read := range readers {
 			t.Run(tc.name+"/"+name, func(t *testing.T) {
 				// types 10 (AAAA) and 11 (CCCC) both have a 3-byte body
-				log := fmtRecord(FMTType, FMTLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")
+				log := fmtRecord(fmtMsgType, fmtMsgLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")
 				log = append(log, fmtRecord(10, 6, "AAAA", "BBB", "X,Y,Z")...)
 				log = append(log, fmtRecord(11, 6, "CCCC", "BBB", "X,Y,Z")...)
-				log = append(log, HEAD1, HEAD2, 11, 1, 2, 3)
+				log = append(log, head1, head2, 11, 1, 2, 3)
 				log = append(log, tc.tail...)
 
 				p, err := NewParser(bytes.NewReader(log))
