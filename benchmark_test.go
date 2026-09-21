@@ -25,7 +25,7 @@ func BenchmarkParseAllMessages(b *testing.B) {
 
 		for {
 			_, err := parser.ReadMessage()
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
+			if err == io.EOF {
 				break
 			}
 			if err != nil {
@@ -59,7 +59,7 @@ func BenchmarkParseFiltered(b *testing.B) {
 
 		for {
 			_, err := parser.ReadMessage()
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
+			if err == io.EOF {
 				break
 			}
 			if err != nil {
@@ -91,7 +91,7 @@ func BenchmarkParseReadInto(b *testing.B) {
 		var msg Message
 		for {
 			err := parser.ReadInto(&msg)
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
+			if err == io.EOF {
 				break
 			}
 			if err != nil {

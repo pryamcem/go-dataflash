@@ -34,7 +34,7 @@ func main() {
 	log.Println("10 Scaled Fields")
 	for count := range 10 {
 		msg, err := parser.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {

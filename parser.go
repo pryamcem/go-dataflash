@@ -78,7 +78,9 @@ func (p *Parser) GetSchemas() map[uint8]*Schema {
 
 // ReadMessage reads and parses the next message from the log.
 // The returned *Message owns its body buffer and is safe to retain.
-// Returns io.EOF when there are no more messages.
+// Returns io.EOF when there are no more messages. A log that ends in the middle
+// of a message (common after a crash) also returns io.EOF; Stats().Truncated
+// tells the two apart.
 func (p *Parser) ReadMessage() (*Message, error) {
 	msg := &Message{}
 	if err := p.readMessage(msg, false); err != nil {
@@ -91,9 +93,21 @@ func (p *Parser) ReadMessage() (*Message, error) {
 // body buffer to avoid a per-message allocation. The message data is only valid
 // until the next ReadInto call on the same msg, so copy out anything you need to
 // retain (decoded field values from Get are independent and safe to keep).
-// Returns io.EOF when there are no more messages.
+// Returns io.EOF when there are no more messages, including when the log ends
+// in the middle of a message (see Stats().Truncated).
 func (p *Parser) ReadInto(msg *Message) error {
 	return p.readMessage(msg, true)
+}
+
+// midMessageErr converts a short read in the middle of a message into the
+// public end-of-log signal, recording the truncation in the stats. Any other
+// error is returned unchanged.
+func (p *Parser) midMessageErr(err error) error {
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		p.stats.Truncated = true
+		return io.EOF
+	}
+	return err
 }
 
 // readMessage fills msg with the next decodable message. When reuseBody is true
@@ -102,8 +116,12 @@ func (p *Parser) ReadInto(msg *Message) error {
 func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 	for {
 		msgType, err := p.readMessageHeader()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			return err
+		if err == io.EOF {
+			return io.EOF
+		}
+		if err == io.ErrUnexpectedEOF {
+			// 1 or 2 bytes left: the log was cut off inside a header
+			return p.midMessageErr(err)
 		}
 		if err != nil {
 			if !errors.Is(err, errInvalidHeader) {
@@ -142,7 +160,9 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 			bodySize = 0
 		}
 		if p.filterTypes != nil && !p.filterTypes[msgType] {
-			p.reader.Discard(bodySize)
+			if _, err := p.reader.Discard(bodySize); err != nil {
+				return p.midMessageErr(err)
+			}
 			continue
 		}
 
@@ -156,11 +176,11 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 				msg.body = msg.body[:bodySize]
 			}
 			if _, err := io.ReadFull(p.reader, msg.body); err != nil {
-				return err
+				return p.midMessageErr(err)
 			}
 		} else {
 			if _, err := io.ReadFull(p.reader, p.bodyBuf[:bodySize]); err != nil {
-				return err
+				return p.midMessageErr(err)
 			}
 			msg.body = make([]byte, bodySize)
 			copy(msg.body, p.bodyBuf[:bodySize])
@@ -262,7 +282,7 @@ func (p *Parser) GetSlice(start, end int64, sliceType SliceType) ([]*Message, er
 	var messages []*Message
 	for {
 		msg, err := p.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
