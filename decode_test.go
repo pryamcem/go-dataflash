@@ -17,7 +17,7 @@ func TestDecodeMessageBody_SingleUint8(t *testing.T) {
 
 	body := []byte{123}
 
-	result, err := DecodeMessageBody(body, schema)
+	result, err := decodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestDecodeMessageBody_MultipleUnsignedIntegers(t *testing.T) {
 		0x40, 0xE2, 0x01, 0x00, // I
 	}
 
-	result, err := DecodeMessageBody(body, schema)
+	result, err := decodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestDecodeMessageBody_SignedIntegers(t *testing.T) {
 		0xC0, 0x1D, 0xFE, 0xFF, // i: -123456
 	}
 
-	result, err := DecodeMessageBody(body, schema)
+	result, err := decodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestDecodeMessageBody_ScaledValues(t *testing.T) {
 		0xC0, 0x78, 0x83, 0x16, // L: latitude
 	}
 
-	result, err := DecodeMessageBody(body, schema)
+	result, err := decodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestDecodeMessageBody_String(t *testing.T) {
 	// "GPS" with null terminator
 	body := []byte{'G', 'P', 'S', 0x00}
 
-	result, err := DecodeMessageBody(body, schema)
+	result, err := decodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestDecodeMessageBody_NullTerminator(t *testing.T) {
 		// No more data after null terminator
 	}
 
-	result, err := DecodeMessageBody(body, schema)
+	result, err := decodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestDecodeMessageBody_MoreFormatThanColumns(t *testing.T) {
 		0x40, 0xE2, 0x01, 0x00,
 	}
 
-	result, err := DecodeMessageBody(body, schema)
+	result, err := decodeMessageBody(body, schema)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestLazyMatchesEagerDecode(t *testing.T) {
 			continue
 		}
 
-		want, err := DecodeMessageBody(msg.body, msg.schema)
+		want, err := decodeMessageBody(msg.body, msg.schema)
 		if err != nil {
 			t.Fatalf("message %d (%s): eager decode failed: %v", msg.LineNo, msg.Name, err)
 		}
@@ -282,7 +282,7 @@ func TestLazyMatchesEagerDecode(t *testing.T) {
 			}
 		}
 		if !sameFields(msg.Fields(), want) {
-			t.Fatalf("message %d (%s): Fields() differs from DecodeMessageBody", msg.LineNo, msg.Name)
+			t.Fatalf("message %d (%s): Fields() differs from decodeMessageBody", msg.LineNo, msg.Name)
 		}
 	}
 	if messages == 0 {
@@ -427,7 +427,7 @@ func TestGetEdgeCases(t *testing.T) {
 func TestDecodeMessageBodyTruncated(t *testing.T) {
 	schema := &Schema{Format: "BHI", Columns: "A,B,C", Length: 10}
 
-	got, err := DecodeMessageBody([]byte{9, 0x10, 0x27, 0x01}, schema) // I needs 4 bytes, only 1 left
+	got, err := decodeMessageBody([]byte{9, 0x10, 0x27, 0x01}, schema) // I needs 4 bytes, only 1 left
 	if err == nil {
 		t.Fatal("expected an error for a truncated body, got nil")
 	}

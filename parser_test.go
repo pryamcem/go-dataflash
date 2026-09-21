@@ -296,11 +296,11 @@ func TestGetSlice(t *testing.T) {
 func TestReadSchemaLengthBelowHeader(t *testing.T) {
 	const badType = 200
 
-	for _, length := range []uint8{0, 1, HeaderSize - 1} {
+	for _, length := range []uint8{0, 1, headerSize - 1} {
 		var log []byte
-		log = append(log, fmtRecord(FMTType, FMTLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")...)
+		log = append(log, fmtRecord(fmtMsgType, fmtMsgLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")...)
 		log = append(log, fmtRecord(badType, length, "BAD", "", "")...)
-		log = append(log, HEAD1, HEAD2, badType, HEAD1, HEAD2, badType)
+		log = append(log, head1, head2, badType, head1, head2, badType)
 
 		readAll := func(t *testing.T, read func(p *Parser) error) {
 			t.Helper()
@@ -397,11 +397,11 @@ func TestSetFilterFailureLeavesParserUnchanged(t *testing.T) {
 // picked by map iteration order.
 func TestSetFilterNameWithMultipleTypes(t *testing.T) {
 	var log []byte
-	log = append(log, fmtRecord(FMTType, FMTLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")...)
+	log = append(log, fmtRecord(fmtMsgType, fmtMsgLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")...)
 	log = append(log, fmtRecord(10, 4, "DUP", "B", "V")...)
 	log = append(log, fmtRecord(11, 4, "DUP", "B", "V")...)
 	for _, typ := range []byte{10, 11, 10, 11} {
-		log = append(log, HEAD1, HEAD2, typ, 1)
+		log = append(log, head1, head2, typ, 1)
 	}
 
 	for i := 0; i < 20; i++ {

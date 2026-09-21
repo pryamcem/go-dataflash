@@ -17,11 +17,11 @@ const (
 
 // DataFlash binary format constants
 const (
-	HEAD1      = 0xA3 // First magic byte
-	HEAD2      = 0x95 // Second magic byte
-	FMTType    = 128  // FMT message type
-	FMTLength  = 89   // FMT message total length
-	HeaderSize = 3    // Header size in bytes
+	head1        = 0xA3 // First magic byte
+	head2        = 0x95 // Second magic byte
+	fmtMsgType   = 128  // FMT message type
+	fmtMsgLength = 89   // FMT message total length
+	headerSize   = 3    // Header size in bytes
 )
 
 // Parser reads and parses ArduPilot DataFlash binary logs.
@@ -34,7 +34,7 @@ type Parser struct {
 	stats       Stats // Damage found in the current pass over the log
 
 	// Pre-allocated buffers
-	headerBuf [HeaderSize]byte
+	headerBuf [headerSize]byte
 	bodyBuf   [maxBodySize]byte
 	syncBuf   [1]byte
 }
@@ -125,7 +125,7 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 			}
 			// Invalid header - try to sync to next valid header
 			p.stats.InvalidHeaders++
-			p.stats.SkippedBytes += HeaderSize
+			p.stats.SkippedBytes += headerSize
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
 				return syncErr
 			}
@@ -137,7 +137,7 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 		if !ok {
 			// Unknown message type - sync to next header
 			p.stats.UnknownTypes++
-			p.stats.SkippedBytes += HeaderSize
+			p.stats.SkippedBytes += headerSize
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
 				return syncErr
 			}
@@ -148,7 +148,7 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 		p.lineNo++
 
 		// Check filter before reading body
-		bodySize := int(schema.Length) - HeaderSize
+		bodySize := int(schema.Length) - headerSize
 		if bodySize < 0 {
 			// Corrupt FMT declared a length shorter than the header; treat
 			// the message as header-only (same as buildSchemas does).
@@ -330,7 +330,7 @@ func (p *Parser) buildSchemas() error {
 			return err
 		}
 
-		if msgType == FMTType {
+		if msgType == fmtMsgType {
 			schema, err := p.decodeFMTMessage()
 			if err != nil {
 				return err
@@ -338,13 +338,13 @@ func (p *Parser) buildSchemas() error {
 			p.schemas[schema.Type] = schema
 		} else if schema, exists := p.schemas[msgType]; exists && schema.Name == "FMTU" {
 			// Decode FMTU message to get units and multipliers
-			bodySize := int(schema.Length) - HeaderSize
+			bodySize := int(schema.Length) - headerSize
 			body := p.bodyBuf[:bodySize]
 			if _, err := io.ReadFull(p.reader, body); err != nil {
 				continue
 			}
 
-			fields, err := DecodeMessageBody(body, schema)
+			fields, err := decodeMessageBody(body, schema)
 			if err != nil {
 				// Skip malformed FMTU messages
 				continue
@@ -373,10 +373,10 @@ func (p *Parser) buildSchemas() error {
 		} else if schema, exists := p.schemas[msgType]; exists {
 			// Known non-FMT/FMTU message: skip its body using the schema's
 			// recorded length. Falling back to syncToNextHeader here would
-			// byte-scan for HEAD1/HEAD2 inside the payload, which can match
+			// byte-scan for head1/head2 inside the payload, which can match
 			// by coincidence and desync the parser - corrupting later FMT
 			// records (and silently dropping the schemas they define).
-			bodySize := int(schema.Length) - HeaderSize
+			bodySize := int(schema.Length) - headerSize
 			if bodySize < 0 {
 				bodySize = 0
 			}
@@ -412,7 +412,7 @@ func (p *Parser) syncToNextHeader() error {
 			return err
 		}
 
-		if peeked[0] == HEAD1 && peeked[1] == HEAD2 {
+		if peeked[0] == head1 && peeked[1] == head2 {
 			// Found valid header! Don't consume it - let readMessageHeader do that
 			return nil
 		}
@@ -430,7 +430,7 @@ func (p *Parser) readMessageHeader() (uint8, error) {
 		return 0, err
 	}
 
-	if p.headerBuf[0] != HEAD1 || p.headerBuf[1] != HEAD2 {
+	if p.headerBuf[0] != head1 || p.headerBuf[1] != head2 {
 		return 0, errInvalidHeader
 	}
 
