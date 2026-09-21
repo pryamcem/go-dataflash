@@ -3,7 +3,6 @@ package dataflash
 import (
 	"fmt"
 	"io"
-	"os"
 	"reflect"
 	"sync"
 	"testing"
@@ -218,20 +217,6 @@ func TestDecodeMessageBody_MoreFormatThanColumns(t *testing.T) {
 	}
 }
 
-func openTestParser(t *testing.T) *Parser {
-	t.Helper()
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open %s: %v", testFile, err)
-	}
-	t.Cleanup(func() { f.Close() })
-	p, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
-	return p
-}
-
 // sameValue compares decoded values by type and printed form, so NaN floats
 // (which never compare equal with ==) still match.
 func sameValue(a, b any) bool {
@@ -251,10 +236,21 @@ func sameFields(a, b map[string]any) bool {
 	return true
 }
 
+// fullLogSampler decides which messages the full-log tests compare. By default
+// that is every message. Under -short (CI runs -race with it) it is the first 50
+// of each message type plus every 10th message, so every type is still covered.
+type fullLogSampler map[uint8]int
+
+func (s fullLogSampler) check(typ uint8, n int) bool {
+	s[typ]++
+	return !testing.Short() || s[typ] <= 50 || n%10 == 0
+}
+
 // Get and Fields must return exactly what the eager decoder returns, for every
 // message in a real log.
 func TestLazyMatchesEagerDecode(t *testing.T) {
 	p := openTestParser(t)
+	sample := fullLogSampler{}
 
 	messages := 0
 	for {
@@ -266,6 +262,9 @@ func TestLazyMatchesEagerDecode(t *testing.T) {
 			t.Fatalf("ReadMessage: %v", err)
 		}
 		messages++
+		if !sample.check(msg.Type, messages) {
+			continue
+		}
 
 		want, err := DecodeMessageBody(msg.body, msg.schema)
 		if err != nil {
@@ -296,6 +295,7 @@ func TestLazyMatchesEagerDecode(t *testing.T) {
 func TestReadIntoMatchesReadMessage(t *testing.T) {
 	ref := openTestParser(t)
 	reuse := openTestParser(t)
+	sample := fullLogSampler{}
 
 	var msg Message
 	for n := 0; ; n++ {
@@ -315,6 +315,9 @@ func TestReadIntoMatchesReadMessage(t *testing.T) {
 			t.Fatalf("message %d: header mismatch: got {%d %s %d %d}, want {%d %s %d %d}", n,
 				msg.Type, msg.Name, msg.LineNo, msg.TimeUS,
 				want.Type, want.Name, want.LineNo, want.TimeUS)
+		}
+		if !sample.check(msg.Type, n) {
+			continue
 		}
 		if !sameFields(msg.Fields(), want.Fields()) {
 			t.Fatalf("message %d (%s): Fields differ between ReadInto and ReadMessage", n, msg.Name)
