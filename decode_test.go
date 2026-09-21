@@ -3,7 +3,6 @@ package dataflash
 import (
 	"fmt"
 	"io"
-	"os"
 	"reflect"
 	"sync"
 	"testing"
@@ -216,20 +215,6 @@ func TestDecodeMessageBody_MoreFormatThanColumns(t *testing.T) {
 	if len(result) != 2 {
 		t.Errorf("expected 2 fields, got %d", len(result))
 	}
-}
-
-func openTestParser(t *testing.T) *Parser {
-	t.Helper()
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open %s: %v", testFile, err)
-	}
-	t.Cleanup(func() { f.Close() })
-	p, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
-	return p
 }
 
 // sameValue compares decoded values by type and printed form, so NaN floats

@@ -13,6 +13,20 @@ const (
 	testFile = "testdata/testlog.bin"
 )
 
+func openTestParser(t *testing.T) *Parser {
+	t.Helper()
+	f, err := os.Open(testFile)
+	if err != nil {
+		t.Fatalf("failed to open %s: %v", testFile, err)
+	}
+	t.Cleanup(func() { f.Close() })
+	p, err := NewParser(f)
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+	return p
+}
+
 func TestNewParser(t *testing.T) {
 	// Read file into memory
 	data, err := os.ReadFile(testFile)
@@ -100,15 +114,7 @@ func TestCloseNonCloserSource(t *testing.T) {
 }
 
 func TestParserFilter(t *testing.T) {
-	f, err := os.Open("testdata/testlog.bin")
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Set filter to only GPS
 	if err := parser.SetFilter("GPS"); err != nil {
@@ -133,15 +139,7 @@ func TestParserFilter(t *testing.T) {
 }
 
 func TestClearFilter(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Set filter to GPS only
 	if err := parser.SetFilter("GPS"); err != nil {
@@ -170,18 +168,10 @@ func TestClearFilter(t *testing.T) {
 }
 
 func TestSetFilterInvalid(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Try to set filter with all invalid names
-	err = parser.SetFilter("INVALID", "NOTEXIST")
+	err := parser.SetFilter("INVALID", "NOTEXIST")
 	if err == nil {
 		t.Fatal("expected error for invalid filter names, got nil")
 	}
@@ -212,15 +202,7 @@ func TestSetFilterInvalid(t *testing.T) {
 }
 
 func TestFilterChangeRewinds(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Read 5 GPS messages
 	if err := parser.SetFilter("GPS"); err != nil {
@@ -248,15 +230,7 @@ func TestFilterChangeRewinds(t *testing.T) {
 }
 
 func TestMessageTracking(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Filter for IMU which should have TimeUS
 	if err := parser.SetFilter("IMU"); err != nil {
@@ -295,15 +269,7 @@ func TestMessageTracking(t *testing.T) {
 }
 
 func TestGetSlice(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Test slice by LineNo
 	messages, err := parser.GetSlice(10, 20, SliceByLineNo)
