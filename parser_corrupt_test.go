@@ -49,7 +49,6 @@ func TestBuildSchemasMagicInBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
-	defer parser.Close()
 
 	schemas := parser.GetSchemas()
 

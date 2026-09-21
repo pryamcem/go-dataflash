@@ -61,11 +61,6 @@ func NewParser(source io.ReadSeeker) (*Parser, error) {
 	return p, nil
 }
 
-// Close is a no-op. The caller is responsible for closing the source.
-func (p *Parser) Close() error {
-	return nil
-}
-
 // GetSchemas returns a copy of all message schemas found in the log.
 func (p *Parser) GetSchemas() map[uint8]*Schema {
 	result := make(map[uint8]*Schema, len(p.schemas))
