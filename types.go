@@ -100,6 +100,16 @@ func (m *Message) Fields() map[string]any {
 	return m.fields
 }
 
+// Stats describes how much of the log the parser had to skip while reading.
+// All counts are zero for an undamaged log. Messages skipped on purpose by a
+// filter are not counted.
+type Stats struct {
+	SkippedBytes   int64 // Bytes discarded without producing a message (including the bad or unknown 3-byte header)
+	Resyncs        int64 // Times the parser searched forward for the next valid header
+	InvalidHeaders int64 // Headers that did not start with the magic bytes
+	UnknownTypes   int64 // Headers whose message type has no FMT definition in the log
+}
+
 // ScaledValue represents a field value with its unit
 type ScaledValue struct {
 	Value any    // Field value (preserves original type when no scaling needed)
