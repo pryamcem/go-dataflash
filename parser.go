@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 )
 
 var errInvalidHeader = errors.New("invalid header")
@@ -92,6 +93,38 @@ func (p *Parser) ReadMessage() (*Message, error) {
 // in the middle of a message (see Stats().Truncated).
 func (p *Parser) ReadInto(msg *Message) error {
 	return p.readMessage(msg, true)
+}
+
+// Messages returns an iterator over the remaining messages in the log:
+//
+//	for msg, err := range parser.Messages() {
+//		if err != nil {
+//			return err
+//		}
+//		// use msg
+//	}
+//
+// Each message is safe to retain, as with ReadMessage. The loop ends at the end
+// of the log (also when the log is cut off mid-message; see Stats().Truncated).
+// A read error is yielded once as (nil, err) and ends the loop. Breaking out of
+// the loop stops early. Messages does not rewind, so a second loop continues
+// where the first stopped; call Rewind to start over.
+func (p *Parser) Messages() iter.Seq2[*Message, error] {
+	return func(yield func(*Message, error) bool) {
+		for {
+			msg, err := p.ReadMessage()
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(msg, nil) {
+				return
+			}
+		}
+	}
 }
 
 // midMessageErr converts a short read in the middle of a message into the

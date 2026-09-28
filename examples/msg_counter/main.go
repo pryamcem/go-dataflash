@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 
@@ -36,11 +35,7 @@ func main() {
 
 	// Read messages
 	messageCount := make(map[string]int32, 3)
-	for {
-		msg, err := parser.ReadMessage()
-		if err == io.EOF {
-			break
-		}
+	for msg, err := range parser.Messages() {
 		if err != nil {
 			log.Fatalf("Error reading message: %v", err)
 		}

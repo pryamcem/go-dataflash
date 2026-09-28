@@ -63,16 +63,15 @@ if err != nil {
     log.Fatal(err)
 }
 
-for {
-    msg, err := parser.ReadMessage()
-    if err == io.EOF {
-        break
+for msg, err := range parser.Messages() {
+    if err != nil {
+        log.Fatal(err)
     }
     // Process msg.Name, msg.TimeUS, and fields (see "Reading Fields")
 }
 ```
 
-The loop ends with `io.EOF`. A log cut off in the middle of a message (common after a crash) also ends with `io.EOF`; check `parser.Stats().Truncated` if you need to know.
+The loop ends at the end of the log. A log cut off in the middle of a message (common after a crash) also ends normally; check `parser.Stats().Truncated` if you need to know. `Messages` does not rewind, so call `parser.Rewind()` to loop again. If you prefer a plain loop, `ReadMessage` returns `io.EOF` at the end.
 
 ### Reading Fields
 
@@ -118,10 +117,9 @@ The message data is overwritten on the next call. Copy out anything you need to 
 ```go
 parser.SetFilter("GPS", "IMU")  // Only parse GPS and IMU messages
 
-for {
-    msg, err := parser.ReadMessage()
-    if err == io.EOF {
-        break
+for msg, err := range parser.Messages() {
+    if err != nil {
+        log.Fatal(err)
     }
     // msg.Name will be either "GPS" or "IMU"
 }

@@ -2,9 +2,11 @@ package dataflash
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -416,4 +418,68 @@ func TestSetFilterNameWithMultipleTypes(t *testing.T) {
 			t.Fatalf("run %d: read %d DUP messages, want 4 (both types)", i, got)
 		}
 	}
+}
+
+func TestMessages(t *testing.T) {
+	// 2 FMT records plus 3 data messages
+	log := robustnessLog(head1, head2, 10, 2, head1, head2, 10, 3)
+
+	var want []int64
+	ref, err := NewParser(bytes.NewReader(log))
+	if err != nil {
+		t.Fatalf("NewParser: %v", err)
+	}
+	for {
+		msg, err := ref.ReadMessage()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("ReadMessage: %v", err)
+		}
+		want = append(want, msg.LineNo)
+	}
+
+	t.Run("yields every message", func(t *testing.T) {
+		p, _ := NewParser(bytes.NewReader(log))
+		var got []int64
+		for msg, err := range p.Messages() {
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			got = append(got, msg.LineNo)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LineNos = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("break stops early and the next loop continues", func(t *testing.T) {
+		p, _ := NewParser(bytes.NewReader(log))
+		for range p.Messages() {
+			break
+		}
+		for msg := range p.Messages() {
+			if msg.LineNo != want[1] {
+				t.Errorf("continued at LineNo %d, want %d", msg.LineNo, want[1])
+			}
+			break
+		}
+	})
+
+	t.Run("read error is yielded once", func(t *testing.T) {
+		src := &failingSource{Reader: bytes.NewReader(log)}
+		p, _ := NewParser(src)
+		src.failAtEOF = errBoom
+
+		var gotErrs []error
+		for _, err := range p.Messages() {
+			if err != nil {
+				gotErrs = append(gotErrs, err)
+			}
+		}
+		if len(gotErrs) != 1 || !errors.Is(gotErrs[0], errBoom) {
+			t.Errorf("errors = %v, want exactly one %v", gotErrs, errBoom)
+		}
+	})
 }

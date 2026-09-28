@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 
@@ -32,11 +31,8 @@ func main() {
 	}
 
 	log.Println("10 Scaled Fields")
-	for count := range 10 {
-		msg, err := parser.ReadMessage()
-		if err == io.EOF {
-			break
-		}
+	count := 0
+	for msg, err := range parser.Messages() {
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -46,7 +42,8 @@ func main() {
 		scaled := msg.GetScaledFields()
 		fmt.Println(scaled)
 
-		if count > 10 {
+		count++
+		if count >= 10 {
 			break
 		}
 	}
