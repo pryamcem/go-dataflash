@@ -311,10 +311,11 @@ func TestReadIntoMatchesReadMessage(t *testing.T) {
 			t.Fatalf("message %d: %v", n, wantErr)
 		}
 
-		if msg.Type != want.Type || msg.Name != want.Name || msg.LineNo != want.LineNo || msg.TimeUS != want.TimeUS {
-			t.Fatalf("message %d: header mismatch: got {%d %s %d %d}, want {%d %s %d %d}", n,
-				msg.Type, msg.Name, msg.LineNo, msg.TimeUS,
-				want.Type, want.Name, want.LineNo, want.TimeUS)
+		if msg.Type != want.Type || msg.Name != want.Name || msg.LineNo != want.LineNo ||
+			msg.TimeUS != want.TimeUS || msg.HasTimeUS != want.HasTimeUS {
+			t.Fatalf("message %d: header mismatch: got {%d %s %d %d %v}, want {%d %s %d %d %v}", n,
+				msg.Type, msg.Name, msg.LineNo, msg.TimeUS, msg.HasTimeUS,
+				want.Type, want.Name, want.LineNo, want.TimeUS, want.HasTimeUS)
 		}
 		if !sample.check(msg.Type, n) {
 			continue
@@ -450,26 +451,33 @@ func TestFieldsTruncatedBodyDoesNotPanic(t *testing.T) {
 }
 
 // TimeUS is only extracted from 64-bit formats, as before lazy decoding.
+// HasTimeUS tells a message with no recognised TimeUS field apart from one
+// whose TimeUS is genuinely 0.
 func TestDecodeTimeUS(t *testing.T) {
 	tests := []struct {
-		name   string
-		format string
-		body   []byte
-		want   int64
+		name    string
+		format  string
+		columns string
+		body    []byte
+		want    int64
+		wantHas bool
 	}{
-		{"uint64", "QB", []byte{0x10, 0x27, 0, 0, 0, 0, 0, 0, 1}, 10000},
-		{"int64", "qB", []byte{0x10, 0x27, 0, 0, 0, 0, 0, 0, 1}, 10000},
-		{"uint32 not recognised", "IB", []byte{0x10, 0x27, 0, 0, 1}, 0},
-		{"truncated body", "QB", []byte{0x10, 0x27}, 0},
+		{"uint64", "QB", "TimeUS,X", []byte{0x10, 0x27, 0, 0, 0, 0, 0, 0, 1}, 10000, true},
+		{"int64", "qB", "TimeUS,X", []byte{0x10, 0x27, 0, 0, 0, 0, 0, 0, 1}, 10000, true},
+		{"genuinely zero", "QB", "TimeUS,X", []byte{0, 0, 0, 0, 0, 0, 0, 0, 1}, 0, true},
+		{"uint32 not recognised", "IB", "TimeUS,X", []byte{0x10, 0x27, 0, 0, 1}, 0, false},
+		{"truncated body", "QB", "TimeUS,X", []byte{0x10, 0x27}, 0, false},
+		{"no TimeUS column", "B", "X", []byte{1}, 0, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			s := &Schema{Format: tc.format, Columns: "TimeUS,X"}
+			s := &Schema{Format: tc.format, Columns: tc.columns}
 			s.ensureLayout()
 			m := &Message{schema: s, body: tc.body}
 			m.decodeTimeUS()
-			if m.TimeUS != tc.want {
-				t.Errorf("TimeUS = %d, want %d", m.TimeUS, tc.want)
+			if m.TimeUS != tc.want || m.HasTimeUS != tc.wantHas {
+				t.Errorf("TimeUS=%d HasTimeUS=%v, want TimeUS=%d HasTimeUS=%v",
+					m.TimeUS, m.HasTimeUS, tc.want, tc.wantHas)
 			}
 		})
 	}
