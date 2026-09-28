@@ -2,8 +2,11 @@ package dataflash
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -11,6 +14,20 @@ const (
 	// Origin: https://discuss.ardupilot.org/t/vtol-crash-after-transition-to-fbwa/138484
 	testFile = "testdata/testlog.bin"
 )
+
+func openTestParser(t *testing.T) *Parser {
+	t.Helper()
+	f, err := os.Open(testFile)
+	if err != nil {
+		t.Fatalf("failed to open %s: %v", testFile, err)
+	}
+	t.Cleanup(func() { f.Close() })
+	p, err := NewParser(f)
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+	return p
+}
 
 func TestNewParser(t *testing.T) {
 	// Read file into memory
@@ -27,7 +44,6 @@ func TestNewParser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create parser from source: %v", err)
 	}
-	defer parser.Close()
 
 	// Verify we can read a message
 	msg, err := parser.ReadMessage()
@@ -49,7 +65,6 @@ func TestRewindNonFileSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
-	defer parser.Close()
 
 	// SetFilter should rewind and return only GPS messages
 	if err := parser.SetFilter("GPS"); err != nil {
@@ -81,33 +96,8 @@ func TestRewindNonFileSource(t *testing.T) {
 	}
 }
 
-func TestCloseNonCloserSource(t *testing.T) {
-	data, err := os.ReadFile(testFile)
-	if err != nil {
-		t.Fatalf("failed to read test file: %v", err)
-	}
-
-	// bytes.Reader does not implement io.Closer
-	parser, err := NewParser(bytes.NewReader(data))
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
-
-	if err := parser.Close(); err != nil {
-		t.Errorf("expected nil error closing non-closer source, got: %v", err)
-	}
-}
-
 func TestParserFilter(t *testing.T) {
-	f, err := os.Open("testdata/testlog.bin")
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Set filter to only GPS
 	if err := parser.SetFilter("GPS"); err != nil {
@@ -117,7 +107,7 @@ func TestParserFilter(t *testing.T) {
 	// Read 10 messages
 	for range 10 {
 		msg, err := parser.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
@@ -132,15 +122,7 @@ func TestParserFilter(t *testing.T) {
 }
 
 func TestClearFilter(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Set filter to GPS only
 	if err := parser.SetFilter("GPS"); err != nil {
@@ -155,7 +137,7 @@ func TestClearFilter(t *testing.T) {
 	// Should now receive non-GPS messages too
 	for range 20 {
 		msg, err := parser.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
@@ -169,18 +151,10 @@ func TestClearFilter(t *testing.T) {
 }
 
 func TestSetFilterInvalid(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Try to set filter with all invalid names
-	err = parser.SetFilter("INVALID", "NOTEXIST")
+	err := parser.SetFilter("INVALID", "NOTEXIST")
 	if err == nil {
 		t.Fatal("expected error for invalid filter names, got nil")
 	}
@@ -211,15 +185,7 @@ func TestSetFilterInvalid(t *testing.T) {
 }
 
 func TestFilterChangeRewinds(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Read 5 GPS messages
 	if err := parser.SetFilter("GPS"); err != nil {
@@ -247,15 +213,7 @@ func TestFilterChangeRewinds(t *testing.T) {
 }
 
 func TestMessageTracking(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Filter for IMU which should have TimeUS
 	if err := parser.SetFilter("IMU"); err != nil {
@@ -274,12 +232,15 @@ func TestMessageTracking(t *testing.T) {
 	}
 
 	// Verify TimeUS extraction
+	if !msg.HasTimeUS {
+		t.Error("expected HasTimeUS to be true for IMU message")
+	}
 	if msg.TimeUS == 0 {
 		t.Error("expected TimeUS to be non-zero for IMU message")
 	}
 
 	// Verify TimeUS matches Fields
-	if timeUSField, ok := msg.Fields["TimeUS"]; ok {
+	if timeUSField, ok := msg.Fields()["TimeUS"]; ok {
 		var fieldTimeUS int64
 		switch v := timeUSField.(type) {
 		case int64:
@@ -294,15 +255,7 @@ func TestMessageTracking(t *testing.T) {
 }
 
 func TestGetSlice(t *testing.T) {
-	f, err := os.Open(testFile)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
-	defer f.Close()
-	parser, err := NewParser(f)
-	if err != nil {
-		t.Fatalf("failed to create parser: %v", err)
-	}
+	parser := openTestParser(t)
 
 	// Test slice by LineNo
 	messages, err := parser.GetSlice(10, 20, SliceByLineNo)
@@ -341,4 +294,195 @@ func TestGetSlice(t *testing.T) {
 			t.Errorf("message TimeUS %d outside range [%d, %d)", msg.TimeUS, start, end)
 		}
 	}
+}
+
+// A corrupt FMT can declare a message length shorter than the 3-byte header.
+// Reading a message of that type must not panic on a negative body size.
+func TestReadSchemaLengthBelowHeader(t *testing.T) {
+	const badType = 200
+
+	for _, length := range []uint8{0, 1, headerSize - 1} {
+		var log []byte
+		log = append(log, fmtRecord(fmtMsgType, fmtMsgLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")...)
+		log = append(log, fmtRecord(badType, length, "BAD", "", "")...)
+		log = append(log, head1, head2, badType, head1, head2, badType)
+
+		readAll := func(t *testing.T, read func(p *Parser) error) {
+			t.Helper()
+			p, err := NewParser(bytes.NewReader(log))
+			if err != nil {
+				t.Fatalf("NewParser: %v", err)
+			}
+			for {
+				err := read(p)
+				if err == io.EOF {
+					return
+				}
+				if err != nil {
+					t.Fatalf("read: %v", err)
+				}
+			}
+		}
+
+		t.Run(fmt.Sprintf("ReadMessage/length=%d", length), func(t *testing.T) {
+			readAll(t, func(p *Parser) error { _, err := p.ReadMessage(); return err })
+		})
+		t.Run(fmt.Sprintf("ReadInto/length=%d", length), func(t *testing.T) {
+			var msg Message
+			readAll(t, func(p *Parser) error { return p.ReadInto(&msg) })
+		})
+	}
+}
+
+// countRemaining reads to the end of the log and returns the number of
+// messages, checking each one against the optional wantName.
+func countRemaining(t *testing.T, p *Parser, wantName string) int {
+	t.Helper()
+	n := 0
+	for {
+		msg, err := p.ReadMessage()
+		if err == io.EOF {
+			return n
+		}
+		if err != nil {
+			t.Fatalf("ReadMessage: %v", err)
+		}
+		if wantName != "" && msg.Name != wantName {
+			t.Fatalf("got %s message, want only %s", msg.Name, wantName)
+		}
+		n++
+	}
+}
+
+// A failed SetFilter must leave the parser exactly as it was.
+func TestSetFilterFailureLeavesParserUnchanged(t *testing.T) {
+	total := countRemaining(t, openTestParser(t), "")
+
+	gps := openTestParser(t)
+	if err := gps.SetFilter("GPS"); err != nil {
+		t.Fatalf("SetFilter(GPS): %v", err)
+	}
+	gpsTotal := countRemaining(t, gps, "GPS")
+
+	t.Run("all names invalid", func(t *testing.T) {
+		p := openTestParser(t)
+		if err := p.SetFilter("NOPE"); err == nil {
+			t.Fatal("expected an error")
+		}
+		if got := countRemaining(t, p, ""); got != total {
+			t.Errorf("read %d messages after failed SetFilter, want all %d", got, total)
+		}
+	})
+
+	t.Run("some names invalid", func(t *testing.T) {
+		p := openTestParser(t)
+		if err := p.SetFilter("GPS", "NOPE"); err == nil {
+			t.Fatal("expected an error")
+		}
+		if got := countRemaining(t, p, ""); got != total {
+			t.Errorf("read %d messages after failed SetFilter, want all %d", got, total)
+		}
+	})
+
+	t.Run("keeps the previous filter", func(t *testing.T) {
+		p := openTestParser(t)
+		if err := p.SetFilter("GPS"); err != nil {
+			t.Fatalf("SetFilter(GPS): %v", err)
+		}
+		if err := p.SetFilter("IMU", "NOPE"); err == nil {
+			t.Fatal("expected an error")
+		}
+		if got := countRemaining(t, p, "GPS"); got != gpsTotal {
+			t.Errorf("read %d GPS messages after failed SetFilter, want %d", got, gpsTotal)
+		}
+	})
+}
+
+// A name shared by several message types must select all of them, not one
+// picked by map iteration order.
+func TestSetFilterNameWithMultipleTypes(t *testing.T) {
+	var log []byte
+	log = append(log, fmtRecord(fmtMsgType, fmtMsgLength, "FMT", "BBnNZ", "Type,Length,Name,Format,Columns")...)
+	log = append(log, fmtRecord(10, 4, "DUP", "B", "V")...)
+	log = append(log, fmtRecord(11, 4, "DUP", "B", "V")...)
+	for _, typ := range []byte{10, 11, 10, 11} {
+		log = append(log, head1, head2, typ, 1)
+	}
+
+	for i := 0; i < 20; i++ {
+		p, err := NewParser(bytes.NewReader(log))
+		if err != nil {
+			t.Fatalf("NewParser: %v", err)
+		}
+		if err := p.SetFilter("DUP"); err != nil {
+			t.Fatalf("SetFilter(DUP): %v", err)
+		}
+		if got := countRemaining(t, p, "DUP"); got != 4 {
+			t.Fatalf("run %d: read %d DUP messages, want 4 (both types)", i, got)
+		}
+	}
+}
+
+func TestMessages(t *testing.T) {
+	// 2 FMT records plus 3 data messages
+	log := robustnessLog(head1, head2, 10, 2, head1, head2, 10, 3)
+
+	var want []int64
+	ref, err := NewParser(bytes.NewReader(log))
+	if err != nil {
+		t.Fatalf("NewParser: %v", err)
+	}
+	for {
+		msg, err := ref.ReadMessage()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("ReadMessage: %v", err)
+		}
+		want = append(want, msg.LineNo)
+	}
+
+	t.Run("yields every message", func(t *testing.T) {
+		p, _ := NewParser(bytes.NewReader(log))
+		var got []int64
+		for msg, err := range p.Messages() {
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			got = append(got, msg.LineNo)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LineNos = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("break stops early and the next loop continues", func(t *testing.T) {
+		p, _ := NewParser(bytes.NewReader(log))
+		for range p.Messages() {
+			break
+		}
+		for msg := range p.Messages() {
+			if msg.LineNo != want[1] {
+				t.Errorf("continued at LineNo %d, want %d", msg.LineNo, want[1])
+			}
+			break
+		}
+	})
+
+	t.Run("read error is yielded once", func(t *testing.T) {
+		src := &failingSource{Reader: bytes.NewReader(log)}
+		p, _ := NewParser(src)
+		src.failAtEOF = errBoom
+
+		var gotErrs []error
+		for _, err := range p.Messages() {
+			if err != nil {
+				gotErrs = append(gotErrs, err)
+			}
+		}
+		if len(gotErrs) != 1 || !errors.Is(gotErrs[0], errBoom) {
+			t.Errorf("errors = %v, want exactly one %v", gotErrs, errBoom)
+		}
+	})
 }

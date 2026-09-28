@@ -2,11 +2,10 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 
-	"github.com/pryamcem/go-dataflash/v2"
+	"github.com/pryamcem/go-dataflash/v3"
 )
 
 func main() {
@@ -32,21 +31,19 @@ func main() {
 	}
 
 	log.Println("10 Scaled Fields")
-	for count := range 10 {
-		msg, err := parser.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			break
-		}
+	count := 0
+	for msg, err := range parser.Messages() {
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		log.Println(msg.Fields)
+		log.Println(msg.Fields())
 
 		scaled := msg.GetScaledFields()
 		fmt.Println(scaled)
 
-		if count > 10 {
+		count++
+		if count >= 10 {
 			break
 		}
 	}
