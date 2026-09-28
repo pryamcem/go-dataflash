@@ -24,11 +24,12 @@ type Schema struct {
 // or all at once via Fields. A Message caches decoded fields, so a single
 // Message must not be used from multiple goroutines at once.
 type Message struct {
-	Type   uint8   // Message type ID
-	Name   string  // Message name
-	LineNo int64   // Message sequence number in the log
-	TimeUS int64   // Microseconds since boot (0 if not available)
-	schema *Schema // Reference to schema for unit/mult lookups
+	Type      uint8   // Message type ID
+	Name      string  // Message name
+	LineNo    int64   // Message sequence number in the log
+	TimeUS    int64   // Microseconds since boot; meaningful only when HasTimeUS is true
+	HasTimeUS bool    // Whether this message has a recognised TimeUS field
+	schema    *Schema // Reference to schema for unit/mult lookups
 
 	body   []byte         // raw message body, retained for lazy decode
 	fields map[string]any // cached full decode (populated by Fields)
@@ -60,8 +61,10 @@ func (m *Message) Get(field string) (any, bool) {
 	return nil, false
 }
 
-// decodeTimeUS populates m.TimeUS directly from the body without boxing,
-// matching the original behaviour (only 64-bit TimeUS formats are recognised).
+// decodeTimeUS populates m.TimeUS and m.HasTimeUS directly from the body
+// without boxing. Only 64-bit TimeUS formats are recognised; a message whose
+// schema has no such field, or whose body is too short to hold it, leaves
+// HasTimeUS false and TimeUS 0.
 func (m *Message) decodeTimeUS() {
 	if m.schema == nil || m.body == nil {
 		return
@@ -79,6 +82,7 @@ func (m *Message) decodeTimeUS() {
 		switch rune(fc) {
 		case 'Q', 'q':
 			m.TimeUS = int64(binary.LittleEndian.Uint64(m.body[off:]))
+			m.HasTimeUS = true
 		}
 		return
 	}

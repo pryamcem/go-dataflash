@@ -197,6 +197,7 @@ func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 		// Reset cached decode state, then read the body.
 		msg.fields = nil
 		msg.TimeUS = 0
+		msg.HasTimeUS = false
 		if reuseBody {
 			if cap(msg.body) < bodySize {
 				msg.body = make([]byte, bodySize)
@@ -301,7 +302,9 @@ const (
 
 // GetSlice returns messages within the specified range.
 // start and end values are interpreted based on sliceType (LineNo or TimeUS).
-// The returned messages are those where start <= value < end.
+// The returned messages are those where start <= value < end. With
+// SliceByTimeUS, a message without a TimeUS field (HasTimeUS false) is
+// treated as TimeUS 0, same as reading msg.TimeUS directly.
 func (p *Parser) GetSlice(start, end int64, sliceType SliceType) ([]*Message, error) {
 	if err := p.Rewind(); err != nil {
 		return nil, err

@@ -232,6 +232,9 @@ func TestMessageTracking(t *testing.T) {
 	}
 
 	// Verify TimeUS extraction
+	if !msg.HasTimeUS {
+		t.Error("expected HasTimeUS to be true for IMU message")
+	}
 	if msg.TimeUS == 0 {
 		t.Error("expected TimeUS to be non-zero for IMU message")
 	}
