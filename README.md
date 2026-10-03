@@ -1,5 +1,6 @@
 # go-dataflash
 
+![go-dataflash logo](assets/go-dataflash-logo.png)
 ArduPilot DataFlash log parser written in Go.
 
 ## About
@@ -9,13 +10,34 @@ go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It 
 ## Version History
 
 ### v3.0.0
-- Lazy field decoding: messages keep their raw body and decode fields on demand
-- `Message.Fields` is now a method, `Message.Fields()` (decodes all fields once and caches them)
-- New `Message.Get(field)` to decode a single field without building a map
-- New `Parser.ReadInto(msg)` to reuse a message and its buffer across reads
+- **~5x faster, ~9x less memory** reading a log without decoding every field (measured on the public test log, v2 vs v3, `DATAFLASH_BENCH_FILE=testdata/testlog.bin go test -bench . -benchmem`, averaged over several runs on the same machine) — **~7.6x faster, ~10x less memory** on a real-world ~184MB log; the gap grows with log size and with reading fewer fields (see [Super fast](#super-fast))
+- **Lazy field decoding**: messages keep their raw body and decode fields on demand instead of building a full map up front — much faster and far fewer allocations when you only need a few fields (see [Reading Fields](#reading-fields))
+  - `Message.Fields` is now a method, `Message.Fields()` (decodes all fields once and caches them)
+  - New `Message.Get(field)` to decode a single field without building a map — prefer `Fields()` instead of calling `Get` for every column, which is slower
+  - `GetScaled` / `GetScaledFields` now go through `Get`
+- New `Parser.ReadInto(msg)` to reuse a message and its buffer across reads, avoiding per-message allocation (see [Reusing Messages](#reusing-messages))
+- New `Parser.Messages()` range-over-func iterator: `for msg, err := range parser.Messages() { ... }` — ends at `io.EOF`, no manual loop needed
+- New `Parser.Stats()` reports how much of the log was skipped or resynced (`SkippedBytes`, `Resyncs`, `InvalidHeaders`, `UnknownTypes`, `Truncated`), so you can tell whether a log is damaged
+- New `Message.HasTimeUS` distinguishes a message with no `TimeUS` field from one whose `TimeUS` is genuinely `0`; `Message.TimeUS` is meaningful only when `HasTimeUS` is `true`
+- `ReadMessage` and `ReadInto` now always end with `io.EOF`, including when the log is cut off mid-message (previously `io.ErrUnexpectedEOF`); check `Stats().Truncated` to tell a truncated log from a clean end
+- `SetFilter` is now atomic: an invalid name leaves the previous filter and read position unchanged instead of leaving the parser half-updated; a message name shared by more than one type now selects all of them
+- Fixed a panic when a corrupt FMT record declares a message length shorter than the 3-byte header, or a message body shorter than its own schema needs
+- Fixed the parser looping forever on a persistent (non-EOF) read error from the source, in `NewParser`, `ReadMessage` and `ReadInto`
+- Fixed schema discovery losing FMT records after junk bytes: it now resyncs to the next valid header instead of stepping through the data 3 bytes at a time
+- `Parser.Close` removed — it did nothing since v2; the caller owns and closes the source
+- `DecodeMessageBody` and the header constants (`HEAD1`, `HEAD2`, `FMTType`, `FMTLength`, `HeaderSize`) are no longer exported
+- Minimum Go version lowered to 1.24 (`go.mod` previously pinned the exact 1.25.5 toolchain)
 - Module path updated to `/v3`
 
-Migrating from v2: replace `msg.Fields["X"]` with `msg.Get("X")` (one field) or `msg.Fields()["X"]` (many fields).
+Migrating from v2:
+- `msg.Fields["X"]` → `msg.Fields()["X"]` (same result, decodes all fields once) or `msg.Get("X")` for one or two fields
+- `for k, v := range msg.Fields` → `for k, v := range msg.Fields()`
+- `parser.Close()` → delete the call; close your own source instead
+- A loop checking `err == io.EOF || err == io.ErrUnexpectedEOF` → `err == io.EOF` is now enough; use `parser.Stats().Truncated` if you need to know the log was cut off
+- If you called `DecodeMessageBody` or used `HEAD1`/`HEAD2`/`FMTType`/`FMTLength`/`HeaderSize` directly, those are no longer available — they were internal decoding details, not intended for external use
+
+### v2.1.0
+- Fixed a desync where a known message body containing the `0xA3 0x95` magic bytes could be mistaken for the next header, silently dropping later FMT records (by Arjun Akkiraju, [#9](https://github.com/pryamcem/go-dataflash/pull/9))
 
 ### v2.0.0
 - Caller now owns the source — `NewParser` accepts `io.ReadSeeker`, `Close` is a no-op
@@ -45,6 +67,7 @@ Migrating from v2: replace `msg.Fields["X"]` with `msg.Get("X")` (one field) or 
 
 ## Usage
 
+![message parsing](assets/gopher-msg.mp4)
 See [examples/parse_log](https://github.com/pryamcem/go-dataflash/tree/master/examples/parse_log) for a complete working example.
 
 ### Basic Usage
@@ -153,22 +176,34 @@ for name, sv := range scaledFields {
 ```
 
 ## Super fast
-Parsing 48Mb log with 1,109,301 messages for 1.7s and parsing only GPS and IMU for 0.45s.
-[See benchmark](https://github.com/pryamcem/go-dataflash/tree/master/benchmark_test.go) and try on your logs.
+Fields are decoded lazily (see [Reading Fields](#reading-fields)), so parsing a log without touching every field is very fast, and the gap over v2 grows with log size. On a real-world ~184MB log (not included in this repo):
+
 ```
 goos: linux
 goarch: amd64
-pkg: github.com/pryamcem/go-dataflash
+pkg: github.com/pryamcem/go-dataflash/v3
 cpu: 11th Gen Intel(R) Core(TM) i7-1185G7 @ 3.00GHz
-BenchmarkParseAllMessages-8   	       1	1567094441 ns/op	1644086928 B/op	15049412 allocs/op
-BenchmarkParseAllMessages-8   	       1	1560083874 ns/op	1644071344 B/op	15049393 allocs/op
-BenchmarkParseAllMessages-8   	       1	1874030880 ns/op	1644079008 B/op	15049424 allocs/op
-BenchmarkParseFiltered-8      	       3	 446275414 ns/op	67733824 B/op	  515493 allocs/op
-BenchmarkParseFiltered-8      	       3	 462084433 ns/op	67733792 B/op	  515493 allocs/op
-BenchmarkParseFiltered-8      	       3	 450877264 ns/op	67733733 B/op	  515492 allocs/op
+BenchmarkParseAllMessages-8   	       2	 645849630 ns/op	614664156 B/op	 8495444 allocs/op
+BenchmarkParseFiltered-8      	       3	 422928546 ns/op	 5114328 B/op	   80642 allocs/op
+BenchmarkParseReadInto-8      	       3	 436746922 ns/op	  337408 B/op	   14294 allocs/op
 PASS
-ok  	github.com/pryamcem/go-dataflash	9.974s
 ```
+
+That's ~7.6x faster and ~10x less memory than v2 reading every message without decoding fields (averaged over several runs); filtered reads cut allocations ~7.9x and memory ~16x (wall-clock time there was already short-circuited in v2's filter path, so the gap is smaller, ~1.1x); `ReadInto` keeps allocations close to zero (a few hundred KB total) no matter the log size.
+
+You can reproduce a smaller version of this on the public `testdata/testlog.bin` (5.9MB, 128,443 messages) included in this repo:
+
+```
+DATAFLASH_BENCH_FILE=testdata/testlog.bin go test -bench . -benchmem
+```
+```
+BenchmarkParseAllMessages-8   	      57	  19801442 ns/op	19287948 B/op	  270018 allocs/op
+BenchmarkParseFiltered-8      	      73	  15741445 ns/op	 4587527 B/op	   66551 allocs/op
+BenchmarkParseReadInto-8      	      86	  13544282 ns/op	  321196 B/op	   13133 allocs/op
+PASS
+```
+
+[See benchmark](https://github.com/pryamcem/go-dataflash/tree/master/benchmark_test.go) and try it on your own logs with `DATAFLASH_BENCH_FILE=<path>`.
 
 ## DataFlash Format Overview
 
