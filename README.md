@@ -1,6 +1,6 @@
 <table>
 <tr>
-<td><img src="assets/go-dataflash-logo.png" alt="go-dataflash logo" width="200"></td>
+<td><img src="assets/go-dataflash-logo.png" alt="go-dataflash logo" width="350"></td>
 <td>
 
 # go-dataflash
