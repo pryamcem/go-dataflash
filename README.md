@@ -1,6 +1,7 @@
 # go-dataflash
 
-![go-dataflash logo](assets/go-dataflash-logo.png)
+<p align="center"><img src="assets/go-dataflash-logo.png" alt="go-dataflash logo" width="160"></p>
+
 ArduPilot DataFlash log parser written in Go.
 
 ## About
@@ -10,31 +11,17 @@ go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It 
 ## Version History
 
 ### v3.0.0
-- **~5x faster, ~9x less memory** reading a log without decoding every field (measured on the public test log, v2 vs v3, `DATAFLASH_BENCH_FILE=testdata/testlog.bin go test -bench . -benchmem`, averaged over several runs on the same machine) — **~7.6x faster, ~10x less memory** on a real-world ~184MB log; the gap grows with log size and with reading fewer fields (see [Super fast](#super-fast))
-- **Lazy field decoding**: messages keep their raw body and decode fields on demand instead of building a full map up front — much faster and far fewer allocations when you only need a few fields (see [Reading Fields](#reading-fields))
-  - `Message.Fields` is now a method, `Message.Fields()` (decodes all fields once and caches them)
-  - New `Message.Get(field)` to decode a single field without building a map — prefer `Fields()` instead of calling `Get` for every column, which is slower
-  - `GetScaled` / `GetScaledFields` now go through `Get`
-- New `Parser.ReadInto(msg)` to reuse a message and its buffer across reads, avoiding per-message allocation (see [Reusing Messages](#reusing-messages))
-- New `Parser.Messages()` range-over-func iterator: `for msg, err := range parser.Messages() { ... }` — ends at `io.EOF`, no manual loop needed
-- New `Parser.Stats()` reports how much of the log was skipped or resynced (`SkippedBytes`, `Resyncs`, `InvalidHeaders`, `UnknownTypes`, `Truncated`), so you can tell whether a log is damaged
-- New `Message.HasTimeUS` distinguishes a message with no `TimeUS` field from one whose `TimeUS` is genuinely `0`; `Message.TimeUS` is meaningful only when `HasTimeUS` is `true`
-- `ReadMessage` and `ReadInto` now always end with `io.EOF`, including when the log is cut off mid-message (previously `io.ErrUnexpectedEOF`); check `Stats().Truncated` to tell a truncated log from a clean end
-- `SetFilter` is now atomic: an invalid name leaves the previous filter and read position unchanged instead of leaving the parser half-updated; a message name shared by more than one type now selects all of them
-- Fixed a panic when a corrupt FMT record declares a message length shorter than the 3-byte header, or a message body shorter than its own schema needs
-- Fixed the parser looping forever on a persistent (non-EOF) read error from the source, in `NewParser`, `ReadMessage` and `ReadInto`
-- Fixed schema discovery losing FMT records after junk bytes: it now resyncs to the next valid header instead of stepping through the data 3 bytes at a time
-- `Parser.Close` removed — it did nothing since v2; the caller owns and closes the source
-- `DecodeMessageBody` and the header constants (`HEAD1`, `HEAD2`, `FMTType`, `FMTLength`, `HeaderSize`) are no longer exported
-- Minimum Go version lowered to 1.24 (`go.mod` previously pinned the exact 1.25.5 toolchain)
+- **~5x faster, ~9x less memory** reading a log without decoding every field — the gap grows on bigger logs (see [Super fast](#super-fast))
+- **Lazy field decoding**: `Message.Fields` is now a method, `Message.Fields()`; new `Message.Get(field)` decodes a single field without building a map (see [Reading Fields](#reading-fields))
+- New `Parser.Messages()` iterator: `for msg, err := range parser.Messages() { ... }`
+- New `Parser.ReadInto(msg)` to reuse a message across reads with no per-message allocation (see [Reusing Messages](#reusing-messages))
+- `Parser.Close` removed — it did nothing since v2
 - Module path updated to `/v3`
+- Plus: `Parser.Stats()` for damaged-log diagnostics, `Message.HasTimeUS`, an atomic `SetFilter`, and several panic/hang fixes on corrupt logs
 
-Migrating from v2:
-- `msg.Fields["X"]` → `msg.Fields()["X"]` (same result, decodes all fields once) or `msg.Get("X")` for one or two fields
-- `for k, v := range msg.Fields` → `for k, v := range msg.Fields()`
-- `parser.Close()` → delete the call; close your own source instead
-- A loop checking `err == io.EOF || err == io.ErrUnexpectedEOF` → `err == io.EOF` is now enough; use `parser.Stats().Truncated` if you need to know the log was cut off
-- If you called `DecodeMessageBody` or used `HEAD1`/`HEAD2`/`FMTType`/`FMTLength`/`HeaderSize` directly, those are no longer available — they were internal decoding details, not intended for external use
+Full changes: see the [v3.0.0 release notes](https://github.com/pryamcem/go-dataflash/releases/tag/v3.0.0).
+
+Migrating from v2: `msg.Fields["X"]` → `msg.Fields()["X"]` (or `msg.Get("X")` for one field); drop any `parser.Close()` calls.
 
 ### v2.1.0
 - Fixed a desync where a known message body containing the `0xA3 0x95` magic bytes could be mistaken for the next header, silently dropping later FMT records (by Arjun Akkiraju, [#9](https://github.com/pryamcem/go-dataflash/pull/9))
