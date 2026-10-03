@@ -1,12 +1,15 @@
+<table>
+<tr>
+<td><img src="assets/go-dataflash-logo.png" alt="go-dataflash logo" width="200"></td>
+<td>
+
 # go-dataflash
 
-<p align="center"><img src="assets/go-dataflash-logo.png" alt="go-dataflash logo" width="160"></p>
-
-ArduPilot DataFlash log parser written in Go.
-
-## About
-
 go-dataflash is a parser for ArduPilot DataFlash binary logs (`.bin` files). It reads flight telemetry data from ArduPilot-based flight controllers.
+
+</td>
+</tr>
+</table>
 
 ## Version History
 
