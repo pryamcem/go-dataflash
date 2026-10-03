@@ -67,7 +67,8 @@ Migrating from v2:
 
 ## Usage
 
-![message parsing](assets/gopher-msg.mp4)
+![message parsing](assets/gopher-msg.gif)
+
 See [examples/parse_log](https://github.com/pryamcem/go-dataflash/tree/master/examples/parse_log) for a complete working example.
 
 ### Basic Usage
