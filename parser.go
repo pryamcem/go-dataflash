@@ -3,9 +3,13 @@ package dataflash
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	"iter"
 )
+
+var errInvalidHeader = errors.New("invalid header")
 
 const (
 	readBufferSize = 64 * 1024
@@ -14,11 +18,11 @@ const (
 
 // DataFlash binary format constants
 const (
-	HEAD1      = 0xA3 // First magic byte
-	HEAD2      = 0x95 // Second magic byte
-	FMTType    = 128  // FMT message type
-	FMTLength  = 89   // FMT message total length
-	HeaderSize = 3    // Header size in bytes
+	head1        = 0xA3 // First magic byte
+	head2        = 0x95 // Second magic byte
+	fmtMsgType   = 128  // FMT message type
+	fmtMsgLength = 89   // FMT message total length
+	headerSize   = 3    // Header size in bytes
 )
 
 // Parser reads and parses ArduPilot DataFlash binary logs.
@@ -28,9 +32,10 @@ type Parser struct {
 	schemas     map[uint8]*Schema
 	filterTypes map[uint8]bool
 	lineNo      int64 // Current message sequence number
+	stats       Stats // Damage found in the current pass over the log
 
 	// Pre-allocated buffers
-	headerBuf [HeaderSize]byte
+	headerBuf [headerSize]byte
 	bodyBuf   [maxBodySize]byte
 	syncBuf   [1]byte
 }
@@ -57,11 +62,6 @@ func NewParser(source io.ReadSeeker) (*Parser, error) {
 	return p, nil
 }
 
-// Close is a no-op. The caller is responsible for closing the source.
-func (p *Parser) Close() error {
-	return nil
-}
-
 // GetSchemas returns a copy of all message schemas found in the log.
 func (p *Parser) GetSchemas() map[uint8]*Schema {
 	result := make(map[uint8]*Schema, len(p.schemas))
@@ -73,20 +73,94 @@ func (p *Parser) GetSchemas() map[uint8]*Schema {
 }
 
 // ReadMessage reads and parses the next message from the log.
-// Returns io.EOF when there are no more messages.
+// The returned *Message owns its body buffer and is safe to retain.
+// Returns io.EOF when there are no more messages. A log that ends in the middle
+// of a message (common after a crash) also returns io.EOF; Stats().Truncated
+// tells the two apart.
 func (p *Parser) ReadMessage() (*Message, error) {
+	msg := &Message{}
+	if err := p.readMessage(msg, false); err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+// ReadInto reads the next message into the caller-provided msg, reusing its
+// body buffer to avoid a per-message allocation. The message data is only valid
+// until the next ReadInto call on the same msg, so copy out anything you need to
+// retain (decoded field values from Get are independent and safe to keep).
+// Returns io.EOF when there are no more messages, including when the log ends
+// in the middle of a message (see Stats().Truncated).
+func (p *Parser) ReadInto(msg *Message) error {
+	return p.readMessage(msg, true)
+}
+
+// Messages returns an iterator over the remaining messages in the log:
+//
+//	for msg, err := range parser.Messages() {
+//		if err != nil {
+//			return err
+//		}
+//		// use msg
+//	}
+//
+// Each message is safe to retain, as with ReadMessage. The loop ends at the end
+// of the log (also when the log is cut off mid-message; see Stats().Truncated).
+// A read error is yielded once as (nil, err) and ends the loop. Breaking out of
+// the loop stops early. Messages does not rewind, so a second loop continues
+// where the first stopped; call Rewind to start over.
+func (p *Parser) Messages() iter.Seq2[*Message, error] {
+	return func(yield func(*Message, error) bool) {
+		for {
+			msg, err := p.ReadMessage()
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(msg, nil) {
+				return
+			}
+		}
+	}
+}
+
+// midMessageErr converts a short read in the middle of a message into the
+// public end-of-log signal, recording the truncation in the stats. Any other
+// error is returned unchanged.
+func (p *Parser) midMessageErr(err error) error {
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		p.stats.Truncated = true
+		return io.EOF
+	}
+	return err
+}
+
+// readMessage fills msg with the next decodable message. When reuseBody is true
+// the body is read straight into msg's existing buffer (grown as needed);
+// otherwise a fresh buffer is allocated so the message can outlive later reads.
+func (p *Parser) readMessage(msg *Message, reuseBody bool) error {
 	for {
 		msgType, err := p.readMessageHeader()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			return nil, err
+		if err == io.EOF {
+			return io.EOF
+		}
+		if err == io.ErrUnexpectedEOF {
+			// 1 or 2 bytes left: the log was cut off inside a header
+			return p.midMessageErr(err)
 		}
 		if err != nil {
+			if !errors.Is(err, errInvalidHeader) {
+				// Read error from the source - retrying would loop forever
+				return err
+			}
 			// Invalid header - try to sync to next valid header
+			p.stats.InvalidHeaders++
+			p.stats.SkippedBytes += headerSize
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
-				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
-					return nil, syncErr
-				}
-				// Continue trying to read next message
+				return syncErr
 			}
 			continue
 		}
@@ -95,10 +169,10 @@ func (p *Parser) ReadMessage() (*Message, error) {
 		schema, ok := p.schemas[msgType]
 		if !ok {
 			// Unknown message type - sync to next header
+			p.stats.UnknownTypes++
+			p.stats.SkippedBytes += headerSize
 			if syncErr := p.syncToNextHeader(); syncErr != nil {
-				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
-					return nil, syncErr
-				}
+				return syncErr
 			}
 			continue
 		}
@@ -107,67 +181,72 @@ func (p *Parser) ReadMessage() (*Message, error) {
 		p.lineNo++
 
 		// Check filter before reading body
+		bodySize := int(schema.Length) - headerSize
+		if bodySize < 0 {
+			// Corrupt FMT declared a length shorter than the header; treat
+			// the message as header-only (same as buildSchemas does).
+			bodySize = 0
+		}
 		if p.filterTypes != nil && !p.filterTypes[msgType] {
-			bodySize := int(schema.Length) - HeaderSize
-			p.reader.Discard(bodySize)
+			if _, err := p.reader.Discard(bodySize); err != nil {
+				return p.midMessageErr(err)
+			}
 			continue
 		}
 
-		// Read message body using pre-allocated buffer
-		bodySize := int(schema.Length) - HeaderSize
-		body := p.bodyBuf[:bodySize]
-		if _, err := io.ReadFull(p.reader, body); err != nil {
-			return nil, err
-		}
-
-		// Decode message body
-		fields, err := DecodeMessageBody(body, schema)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode message: %w", err)
-		}
-
-		// Extract TimeUS if available
-		timeUS := int64(0)
-		if val, ok := fields["TimeUS"]; ok {
-			switch v := val.(type) {
-			case int64:
-				timeUS = v
-			case uint64:
-				timeUS = int64(v)
+		// Reset cached decode state, then read the body.
+		msg.fields = nil
+		msg.TimeUS = 0
+		msg.HasTimeUS = false
+		if reuseBody {
+			if cap(msg.body) < bodySize {
+				msg.body = make([]byte, bodySize)
+			} else {
+				msg.body = msg.body[:bodySize]
 			}
+			if _, err := io.ReadFull(p.reader, msg.body); err != nil {
+				return p.midMessageErr(err)
+			}
+		} else {
+			if _, err := io.ReadFull(p.reader, p.bodyBuf[:bodySize]); err != nil {
+				return p.midMessageErr(err)
+			}
+			msg.body = make([]byte, bodySize)
+			copy(msg.body, p.bodyBuf[:bodySize])
 		}
 
-		return &Message{
-			Type:   msgType,
-			Name:   schema.Name,
-			Fields: fields,
-			LineNo: p.lineNo,
-			TimeUS: timeUS,
-			schema: schema,
-		}, nil
+		msg.Type = msgType
+		msg.Name = schema.Name
+		msg.LineNo = p.lineNo
+		msg.schema = schema
+		msg.decodeTimeUS()
+		return nil
 	}
 }
 
 // SetFilter restricts parsing to the given message names.
 // Automatically rewinds so all messages are available from the start.
 // Passing no names clears the filter and all message types are returned.
-// Returns an error if any name does not match a message type in the log.
+// Returns an error if any name does not match a message type in the log; in
+// that case the previous filter is left unchanged.
 func (p *Parser) SetFilter(names ...string) error {
 	if len(names) == 0 {
 		p.filterTypes = nil
 		return p.rewind()
 	}
 
-	p.filterTypes = make(map[uint8]bool)
+	// Build the filter separately and apply it only if every name is valid, so
+	// a failed call leaves the current filter and read position untouched.
+	filter := make(map[uint8]bool)
 	var invalidNames []string
 
 	for _, name := range names {
 		found := false
+		// A name can be defined by more than one message type; select them all.
 		for typ, schema := range p.schemas {
 			if schema.Name == name {
-				p.filterTypes[typ] = true
+				filter[typ] = true
 				found = true
-				break
 			}
 		}
 		if !found {
@@ -175,7 +254,7 @@ func (p *Parser) SetFilter(names ...string) error {
 		}
 	}
 
-	if len(p.filterTypes) == 0 {
+	if len(filter) == 0 {
 		return fmt.Errorf("no valid message types found in filter: %v", names)
 	}
 
@@ -183,8 +262,17 @@ func (p *Parser) SetFilter(names ...string) error {
 		return fmt.Errorf("invalid message types in filter: %v", invalidNames)
 	}
 
+	p.filterTypes = filter
+
 	// Rewind to start so filter applies from beginning
 	return p.rewind()
+}
+
+// Stats returns how much of the log the parser has had to skip since the last
+// NewParser, Rewind or SetFilter call. Use it after reading to tell whether a
+// log is damaged.
+func (p *Parser) Stats() Stats {
+	return p.stats
 }
 
 // Rewind resets the source position to the beginning.
@@ -196,6 +284,7 @@ func (p *Parser) Rewind() error {
 // rewind is the internal helper that resets file position and buffered reader.
 func (p *Parser) rewind() error {
 	p.lineNo = 0
+	p.stats = Stats{}
 	if _, err := p.source.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -213,7 +302,9 @@ const (
 
 // GetSlice returns messages within the specified range.
 // start and end values are interpreted based on sliceType (LineNo or TimeUS).
-// The returned messages are those where start <= value < end.
+// The returned messages are those where start <= value < end. With
+// SliceByTimeUS, a message without a TimeUS field (HasTimeUS false) is
+// treated as TimeUS 0, same as reading msg.TimeUS directly.
 func (p *Parser) GetSlice(start, end int64, sliceType SliceType) ([]*Message, error) {
 	if err := p.Rewind(); err != nil {
 		return nil, err
@@ -222,7 +313,7 @@ func (p *Parser) GetSlice(start, end int64, sliceType SliceType) ([]*Message, er
 	var messages []*Message
 	for {
 		msg, err := p.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
@@ -259,12 +350,23 @@ func (p *Parser) buildSchemas() error {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
-		if err != nil {
-			// Skip invalid headers
+		if errors.Is(err, errInvalidHeader) {
+			// Corrupt header - resync to the next one rather than stepping
+			// through the data 3 bytes at a time, which can stay misaligned
+			// and miss later FMT records.
+			if syncErr := p.syncToNextHeader(); syncErr != nil {
+				if syncErr == io.EOF || syncErr == io.ErrUnexpectedEOF {
+					break
+				}
+				return syncErr
+			}
 			continue
 		}
+		if err != nil {
+			return err
+		}
 
-		if msgType == FMTType {
+		if msgType == fmtMsgType {
 			schema, err := p.decodeFMTMessage()
 			if err != nil {
 				return err
@@ -272,13 +374,13 @@ func (p *Parser) buildSchemas() error {
 			p.schemas[schema.Type] = schema
 		} else if schema, exists := p.schemas[msgType]; exists && schema.Name == "FMTU" {
 			// Decode FMTU message to get units and multipliers
-			bodySize := int(schema.Length) - HeaderSize
+			bodySize := int(schema.Length) - headerSize
 			body := p.bodyBuf[:bodySize]
 			if _, err := io.ReadFull(p.reader, body); err != nil {
 				continue
 			}
 
-			fields, err := DecodeMessageBody(body, schema)
+			fields, err := decodeMessageBody(body, schema)
 			if err != nil {
 				// Skip malformed FMTU messages
 				continue
@@ -307,10 +409,10 @@ func (p *Parser) buildSchemas() error {
 		} else if schema, exists := p.schemas[msgType]; exists {
 			// Known non-FMT/FMTU message: skip its body using the schema's
 			// recorded length. Falling back to syncToNextHeader here would
-			// byte-scan for HEAD1/HEAD2 inside the payload, which can match
+			// byte-scan for head1/head2 inside the payload, which can match
 			// by coincidence and desync the parser - corrupting later FMT
 			// records (and silently dropping the schemas they define).
-			bodySize := int(schema.Length) - HeaderSize
+			bodySize := int(schema.Length) - headerSize
 			if bodySize < 0 {
 				bodySize = 0
 			}
@@ -338,6 +440,7 @@ func (p *Parser) buildSchemas() error {
 // This is used when we encounter unknown message types during schema building.
 // Uses Peek and Discard to avoid UnreadByte issues with buffered I/O.
 func (p *Parser) syncToNextHeader() error {
+	p.stats.Resyncs++
 	for {
 		// Peek at the next 2 bytes to check for header pattern
 		peeked, err := p.reader.Peek(2)
@@ -345,13 +448,14 @@ func (p *Parser) syncToNextHeader() error {
 			return err
 		}
 
-		if peeked[0] == HEAD1 && peeked[1] == HEAD2 {
+		if peeked[0] == head1 && peeked[1] == head2 {
 			// Found valid header! Don't consume it - let readMessageHeader do that
 			return nil
 		}
 
 		// Not a header, skip one byte and try again
 		p.reader.Discard(1)
+		p.stats.SkippedBytes++
 	}
 }
 
@@ -362,8 +466,8 @@ func (p *Parser) readMessageHeader() (uint8, error) {
 		return 0, err
 	}
 
-	if p.headerBuf[0] != HEAD1 || p.headerBuf[1] != HEAD2 {
-		return 0, fmt.Errorf("invalid header")
+	if p.headerBuf[0] != head1 || p.headerBuf[1] != head2 {
+		return 0, errInvalidHeader
 	}
 
 	return p.headerBuf[2], nil
@@ -393,6 +497,10 @@ func (p *Parser) decodeFMTMessage() (*Schema, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Build the field layout now so it is read-only once parsing starts,
+	// which keeps Message.Get safe to call from multiple goroutines.
+	schema.ensureLayout()
 
 	return &schema, nil
 }

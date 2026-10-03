@@ -2,11 +2,10 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 
-	"github.com/pryamcem/go-dataflash/v2"
+	"github.com/pryamcem/go-dataflash/v3"
 )
 
 func main() {
@@ -36,18 +35,14 @@ func main() {
 
 	// Read messages
 	count := 0
-	for {
-		msg, err := parser.ReadMessage()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			break
-		}
+	for msg, err := range parser.Messages() {
 		if err != nil {
 			log.Fatalf("Error reading message: %v", err)
 		}
 
 		fmt.Printf("%s #%d: ", msg.Name, count+1)
 		// Print first few fields
-		for k, v := range msg.Fields {
+		for k, v := range msg.Fields() {
 			fmt.Printf("%s=%v ", k, v)
 		}
 		fmt.Println()
